@@ -39,6 +39,8 @@ void DataSensor::setup() {
 
 void DataSensor::dump_config() {
   size_t array_size = this->array_pref_ ? this->array_pref_->size() : 0;
+  char object_id_buf[128];
+  auto object_id = this->get_object_id_to(object_id_buf);
   
   ESP_LOGCONFIG(TAG_DATA_SENSOR,
                 "'%s':\n"
@@ -48,7 +50,7 @@ void DataSensor::dump_config() {
                 "  Data Size: %u bytes\n"
                 "  Array Size: %u bytes\n"
                 "  Off Behavior: %s",
-                this->get_object_id().c_str(),
+                object_id.c_str(),
                 this->get_label().c_str(),
                 this->item_type_,
                 static_cast<unsigned>(this->max_schedule_data_entries_),
@@ -186,7 +188,9 @@ void DataSensor::apply_state(int16_t event_index, bool switch_state, bool manual
 
 void DataSensor::set_max_schedule_data_entries(uint16_t size) {
   this->max_schedule_data_entries_ = size;
-  ESP_LOGD(TAG_DATA_SENSOR, "Sensor %s set to %u entries", this->get_object_id().c_str(), this->max_schedule_data_entries_);
+  char object_id_buf[128];
+  auto object_id = this->get_object_id_to(object_id_buf);
+  ESP_LOGD(TAG_DATA_SENSOR, "Sensor %s set to %u entries", object_id.c_str(), this->max_schedule_data_entries_);
 }
 
 uint16_t DataSensor::get_bytes_for_type(uint16_t type) const {

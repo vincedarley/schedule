@@ -29,8 +29,10 @@ class ScheduleSwitch : public switch_::Switch, public StateBasedSchedulable {
   
   void setup() override {
     // Sync entity info from EntityBase (via Switch) to Schedule base class
-    // EntityBase::get_object_id() returns const char*, EntityBase::get_name() returns StringRef
-    this->sync_from_entity(this->EntityBase::get_object_id(), this->EntityBase::get_name().c_str());
+    // EntityBase::get_object_id_to() takes a char buffer and returns StringRef
+    char object_id_buf[128];
+    auto object_id = this->EntityBase::get_object_id_to(object_id_buf);
+    this->sync_from_entity(std::string(object_id.c_str()), this->EntityBase::get_name().c_str());
     // Call Schedule's setup
     Schedule::setup();
   }

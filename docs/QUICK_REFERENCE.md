@@ -31,7 +31,7 @@ switch:
     id: heating_schedule
     name: "Heating Schedule"
     ha_schedule_entity_id: "schedule.heating"
-    max_schedule_entries: 21
+    max_schedule_size: 21
     
     # Required components (auto-generated IDs)
     schedule_update_button:
@@ -69,7 +69,7 @@ button:
     id: blinds_button
     name: "Blinds Schedule"
     ha_schedule_entity_id: "schedule.blinds"
-    max_schedule_entries: 10
+    max_schedule_size: 10
     
     # Required components
     schedule_update_button:
@@ -115,7 +115,7 @@ switch:
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
 | `ha_schedule_entity_id` | string | Yes | - | Home Assistant schedule entity ID |
-| `max_schedule_entries` | int | No | 21 | Maximum schedule entries |
+| `max_schedule_size` | int | No | 21 | Maximum schedule entries |
 | `schedule_update_button` | config | Yes | - | Button to trigger schedule update |
 | `mode_selector` | config | Yes | - | Mode selection dropdown |
 | `current_event` | config | No | - | Text sensor showing current event |

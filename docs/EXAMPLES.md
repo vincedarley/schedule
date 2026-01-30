@@ -32,7 +32,7 @@ switch:
     mode_selector:
       name: "Heating Mode"
     
-    indicator:
+    schedule_switch_indicator:
       name: "Heating Indicator"
     
     on_turn_on:
@@ -55,7 +55,7 @@ switch:
     id: heating_schedule
     name: "Heating Schedule"
     ha_schedule_entity_id: "schedule.heating"
-    max_schedule_entries: 21
+    max_schedule_size: 21
     
     schedule_update_button:
       name: "Update Heating Schedule"
@@ -63,10 +63,10 @@ switch:
     mode_selector:
       name: "Heating Mode"
     
-    current_event_sensor:
+    current_event:
       name: "Current Heating Event"
     
-    next_event_sensor:
+    next_event:
       name: "Next Heating Event"
     
     scheduled_data_items:
@@ -303,7 +303,7 @@ button:
     id: cat_feeder_schedule
     name: "Cat Feeder Schedule"
     ha_schedule_entity_id: "schedule.cat_feeding"
-    max_schedule_entries: 10
+    max_schedule_size: 10
     
     schedule_update_button:
       name: "Update Feeding Schedule"
@@ -311,10 +311,10 @@ button:
     mode_selector:
       name: "Feeder Mode"
     
-    current_event_sensor:
+    current_event:
       name: "Current Feeding Event"
     
-    next_event_sensor:
+    next_event:
       name: "Next Feeding Event"
     
     scheduled_data_items:
@@ -419,7 +419,7 @@ button:
     id: blinds_schedule
     name: "Blinds Schedule"
     ha_schedule_entity_id: "schedule.blinds"
-    max_schedule_entries: 10
+    max_schedule_size: 10
     
     schedule_update_button:
       name: "Update Blinds Schedule"
@@ -427,10 +427,10 @@ button:
     mode_selector:
       name: "Blinds Mode"
     
-    current_event_sensor:
+    current_event:
       name: "Current Blinds Event"
     
-    next_event_sensor:
+    next_event:
       name: "Next Blinds Event"
     
     scheduled_data_items:

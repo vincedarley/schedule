@@ -85,8 +85,8 @@ classDiagram
     Schedule o-- ScheduleSwitchIndicator
     Schedule o-- TextSensor
     
-    StateBasedSchedulable o-- ScheduleStateModeSelect
-    EventBasedSchedulable o-- ScheduleEventModeSelect
+    StateBasedSchedulable o-- StateModeSelect
+    EventBasedSchedulable o-- EventModeSelect
     
     Schedule o-- ArrayPreferenceBase
     ArrayPreferenceBase <|-- ArrayPreference
@@ -565,7 +565,7 @@ The mode select components automatically adapt their available options based on 
 - If current mode is "Early Off" or "Boost On" when schedule becomes empty  switches to "Manual Off"
 
 **Implementation:**
-- `ScheduleStateModeSelect::set_manual_only_mode(bool is_empty)`
+- `StateModeSelect::set_manual_only_mode(bool is_empty)`
 - Called from `StateBasedSchedulable::on_schedule_empty_changed()`
 - Uses `SelectTraits::set_options()` to update available options
 - Calls `publish_state()` to notify Home Assistant
@@ -584,7 +584,7 @@ The mode select components automatically adapt their available options based on 
 - If current mode is "Enabled" when schedule becomes empty  switches to "Disabled"
 
 **Implementation:**
-- `ScheduleEventModeSelect::set_disabled_only_mode(bool is_empty)`
+- `EventModeSelect::set_disabled_only_mode(bool is_empty)`
 - Called from `EventBasedSchedulable::on_schedule_empty_changed()`
 - Uses `SelectTraits::set_options()` to update available options
 - Calls `publish_state()` to notify Home Assistant

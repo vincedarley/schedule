@@ -22,8 +22,8 @@ The actual implementation files are in the parent directory:
 - `event_based_schedulable.h` / `event_based_schedulable.cpp` - Event-based scheduling (Button, Cover, Lock)
 - `data_sensor.h` / `data_sensor.cpp` - Data sensor for schedule variables
 - `array_preference.h` - Array preference template for NVS storage
-- `schedule_state_mode_select.h` - Mode selection for state-based components
-- `schedule_event_mode_select.h` - Mode selection for event-based components
+- `state_mode_select.h` - Mode selection for state-based components
+- `event_mode_select.h` - Mode selection for event-based components
 
 ### Platform Implementations
 - `switch/` - Schedule Switch platform (state-based)

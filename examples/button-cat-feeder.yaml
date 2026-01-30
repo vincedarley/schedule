@@ -79,7 +79,7 @@ button:
     id: cat_feeder_schedule
     name: "Cat Feeder Schedule"
     ha_schedule_entity_id: "schedule.cat_feeding"
-    max_schedule_entries: 10
+    max_schedule_size: 10
     
     schedule_update_button:
       name: "Update Feeding Schedule"
@@ -87,10 +87,10 @@ button:
     mode_selector:
       name: "Feeder Mode"
     
-    current_event_sensor:
+    current_event:
       name: "Current Feeding Event"
     
-    next_event_sensor:
+    next_event:
       name: "Next Feeding Event"
     
     scheduled_data_items:

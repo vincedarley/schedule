@@ -24,20 +24,19 @@ esp32:
     version: recommended
 
 external_components:
-#  - source:
-#      type: local
-#      path: custom_components
   - source:
-      type: git
-      url: https://github.com/pebblebed-tech/schedule
-    components: [ schedule ]
+      type: local
+      path: components
+#  - source:
+#      type: git
+#      url: https://github.com/pebblebed-tech/schedule
+#    components: [ schedule ]
 
 # Enable logging
 logger:
   level: VERY_VERBOSE
   logs:
     light.addressable: DEBUG
-    api.service: DEBUG
 
 # Enable Home Assistant API
 api:
@@ -194,7 +193,7 @@ switch:
     on_turn_on:
       - logger.log: "Test Schedule 2 Switch Turned ON"
     on_turn_off:
-      - logger.log: "Test Schedule 2 Switch Turned OFF"  
+      - logger.log: "Test Schedule 2 Switch Turned OFF"   
   - platform: gpio
     pin: GPIO1
     id: relay1
@@ -215,22 +214,22 @@ switch:
     pin: GPIO41
     id: relay3
     name: Relay 3
-    on_turn_on:      
-      - lambda: 'id(testschedule).load_schedule_from_pref_();'
+#    on_turn_on:      
+#      - lambda: 'id(testschedule).load_schedule_from_pref_();'
   - platform: gpio
     pin: GPIO42
     id: relay4
     name: Relay 4
-    on_turn_on:      
-      - lambda: 'id(testschedule).save_schedule_to_pref_();'
+#    on_turn_on:      
+#      - lambda: 'id(testschedule).save_schedule_to_pref_();'
   - platform: gpio
     pin:
       number: GPIO45
       ignore_strapping_warning: true
     id: relay5
     name: Relay 5
-    on_turn_on: 
-      - lambda: 'id(testschedule).log_schedule_data();'
+#    on_turn_on: 
+#      - lambda: 'id(testschedule).log_schedule_data();'
         
   - platform: gpio
     pin:
@@ -238,8 +237,8 @@ switch:
       ignore_strapping_warning: true
     id: relay6
     name: Relay 6
-    on_turn_on: 
-      - lambda: 'id(testschedule).request_schedule();'
+#    on_turn_on: 
+#      - lambda: 'id(testschedule).request_schedule();'
 uart:
   tx_pin: GPIO17
   rx_pin: GPIO18
@@ -355,26 +354,26 @@ button:
           }
 # Test buttons that call the template class methods
 
-  - platform: template
-    name: "Test Create Preference"
-    icon: "mdi:database-plus"
-    on_press:
-      - lambda: |-
-          id(testschedule)->test_create_preference();
+#  - platform: template
+#    name: "Test Create Preference"
+#    icon: "mdi:database-plus"
+#    on_press:
+#      - lambda: |-
+#          id(testschedule)->test_create_preference();
   
-  - platform: template
-    name: "Test Save Preference"
-    icon: "mdi:content-save"
-    on_press:
-      - lambda: |-
-          id(testschedule)->test_save_preference();
+#  - platform: template
+#    name: "Test Save Preference"
+#    icon: "mdi:content-save"
+#    on_press:
+#      - lambda: |-
+#          id(testschedule)->test_save_preference();
   
-  - platform: template
-    name: "Test Load Preference"
-    icon: "mdi:download"
-    on_press:
-      - lambda: |-
-          id(testschedule)->test_load_preference();
+#  - platform: template
+#    name: "Test Load Preference"
+#    icon: "mdi:download"
+#    on_press:
+#      - lambda: |-
+#          id(testschedule)->test_load_preference();
 
 sensor:
  # - platform: modbus_controller

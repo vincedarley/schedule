@@ -139,6 +139,7 @@ class Schedule : public Component  {
     this->name_ = name;
   }
   const std::string& get_object_id() const { return this->object_id_; }
+  const std::string& get_name() const { return this->name_; }
   uint32_t get_object_id_hash() const { return fnv1_hash(this->object_id_); }
   uint32_t get_preference_hash() const { return this->get_object_id_hash(); }
   
@@ -372,6 +373,7 @@ class Schedule : public Component  {
   bool schedule_empty_{true};
   bool update_on_reconnect_{false};
   bool entity_id_changed_{false};
+
   
   // Timing
   uint32_t last_connection_check_{0};

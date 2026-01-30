@@ -1,14 +1,12 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import switch as esphome_switch
-from esphome.components import sensor
-from esphome.components import button
 from esphome.components import binary_sensor
-from esphome.components import text_sensor
 from esphome.components import select
 from esphome.components import time
+from esphome.components import text_sensor
+from esphome.components import button
 from esphome.const import (
-    CONF_ID,
     CONF_NAME,
     CONF_TIME_ID,
     ENTITY_CATEGORY_CONFIG,
@@ -17,22 +15,16 @@ from esphome.const import (
 # Import from parent __init__.py
 from .. import (
     schedule_ns,
-    Schedule,
     StateBasedSchedulable,
-    DataSensor,
     DATA_SENSOR_SCHEMA_STATE_BASED,
     CONF_SCHEDULED_DATA_ITEMS,
-    CONF_ITEM_LABEL,
-    CONF_ITEM_TYPE,
-    CONF_OFF_BEHAVIOR,
-    CONF_OFF_VALUE,
-    CONF_MANUAL_BEHAVIOR,
-    CONF_MANUAL_VALUE,
     CONF_HA_SCHEDULE_ENTITY_ID,
     CONF_MAX_SCHEDULE_SIZE,
-    ITEM_TYPES,
-    ITEM_TYPE_BYTES,
-    calculate_schedule_array_size,  # NEW: Helper function for array size calculation
+    # Import helper functions
+    setup_schedule_core,
+    setup_update_button,
+    setup_event_sensors,
+    setup_data_sensors,
 )
 
 CODEOWNERS = ["@pebblebed-tech"]
@@ -51,7 +43,7 @@ CONF_UPDATE_ON_RECONNECT = "update_schedule_from_ha_on_reconnect"
 ScheduleSwitch = schedule_ns.class_("ScheduleSwitch", esphome_switch.Switch, StateBasedSchedulable)
 UpdateScheduleButton = schedule_ns.class_("UpdateScheduleButton", button.Button, cg.Component)
 ScheduleSwitchIndicator = schedule_ns.class_("ScheduleSwitchIndicator", binary_sensor.BinarySensor, cg.Component)
-ScheduleStateModeSelect = schedule_ns.class_("ScheduleStateModeSelect", select.Select, cg.Component)
+StateModeSelect = schedule_ns.class_("StateModeSelect", select.Select, cg.Component)
 
 SCHEDULE_MODE_OPTIONS = [
     "Manual Off",
@@ -92,7 +84,7 @@ CONFIG_SCHEMA = esphome_switch.switch_schema(
     ),
     cv.Required(CONF_MODE_SELECT): cv.maybe_simple_value(
         select.select_schema(
-            ScheduleStateModeSelect,
+            StateModeSelect,
             entity_category=ENTITY_CATEGORY_CONFIG,
         ),
         key=CONF_NAME,
@@ -104,31 +96,18 @@ CONFIG_SCHEMA = esphome_switch.switch_schema(
 }).extend(cv.COMPONENT_SCHEMA)
 
 async def to_code(config):
-    # Create the switch (which extends Schedule)
+    # Create the switch (which extends StateBasedSchedulable)
     var = await esphome_switch.new_switch(config)
     await cg.register_component(var, config)
     
-    # Set up base Schedule properties
-    cg.add(var.set_schedule_entity_id(config[CONF_HA_SCHEDULE_ENTITY_ID]))
-    cg.add(var.set_max_schedule_entries(config[CONF_MAX_SCHEDULE_SIZE]))
-    
-    # Calculate and create array preference for schedule times
-    # ScheduleSwitch is state-based (stores ON/OFF pairs)
-    size = calculate_schedule_array_size(config[CONF_MAX_SCHEDULE_SIZE], 'state')
-    # Legacy calculation for reference: size = (config[CONF_MAX_SCHEDULE_SIZE] * 2 * 2) + 4
-    array_pref = cg.RawExpression(f'new esphome::schedule::ArrayPreference<{size}>()')
-    cg.add(var.sched_add_pref(array_pref))
-    
-    # Set internal to true by default
-    cg.add(var.set_internal(True))
+    # Set up core schedule properties (entity ID, preferences, time, etc.)
+    await setup_schedule_core(var, config, storage_type='state')
     
     # Set restore mode to always restore OFF
     cg.add(var.set_restore_mode(esphome_switch.SwitchRestoreMode.SWITCH_ALWAYS_OFF))
     
-    # Generate button ID
-    button_var = await button.new_button(config[CONF_UPDATE_BUTTON])
-    await cg.register_component(button_var, config[CONF_UPDATE_BUTTON])
-    cg.add(button_var.set_schedule(var))
+    # Set up update button
+    await setup_update_button(var, config, CONF_UPDATE_BUTTON)
     
     # Create binary sensor for schedule switch indicator if configured
     if CONF_SCHEDULE_SWITCH_IND in config:
@@ -137,78 +116,14 @@ async def to_code(config):
         cg.add(binary_sensor_var.set_schedule(var))
         cg.add(var.set_switch_indicator(binary_sensor_var))
     
-    # Create current_event text sensor if configured
-    if CONF_CURRENT_EVENT in config:
-        current_event_var = await text_sensor.new_text_sensor(config[CONF_CURRENT_EVENT])
-        cg.add(var.set_current_event_sensor(current_event_var))
+    # Set up event sensors (current/next event text sensors)
+    await setup_event_sensors(var, config)
     
-    # Create next_event text sensor if configured
-    if CONF_NEXT_EVENT in config:
-        next_event_var = await text_sensor.new_text_sensor(config[CONF_NEXT_EVENT])
-        cg.add(var.set_next_event_sensor(next_event_var))
-    
-    # Create mode_select (required)
-    mode_select_conf = config[CONF_MODE_SELECT]
-    mode_select_var = await select.new_select(mode_select_conf, options=SCHEDULE_MODE_OPTIONS)
-    await cg.register_component(mode_select_var, mode_select_conf)
+    # Create mode_select (required for state-based)
+    mode_select_var = await select.new_select(config[CONF_MODE_SELECT], options=SCHEDULE_MODE_OPTIONS)
+    await cg.register_component(mode_select_var, config[CONF_MODE_SELECT])
     cg.add(mode_select_var.set_schedule(var))
     cg.add(var.set_mode_select(mode_select_var))
     
-    # Set time component
-    if CONF_TIME_ID in config:
-        time_var = await cg.get_variable(config[CONF_TIME_ID])
-        cg.add(var.set_time(time_var))
-    
-    # Set update on reconnect flag
-    cg.add(var.set_update_schedule_on_reconnect(config[CONF_UPDATE_ON_RECONNECT]))
-    
-    # Process schedule data items
-    if CONF_SCHEDULED_DATA_ITEMS in config:
-        for sensor_config in config[CONF_SCHEDULED_DATA_ITEMS]:
-            label = sensor_config[CONF_ITEM_LABEL]
-            item_type = ITEM_TYPES[sensor_config[CONF_ITEM_TYPE]]
-            
-            # Get max_schedule_entries - use config value directly
-            max_entries = config[CONF_MAX_SCHEDULE_SIZE]
-            
-            # Calculate bytes needed for this sensor's data
-            bytes_per_item = ITEM_TYPE_BYTES[item_type]
-            default_bytes = max_entries * bytes_per_item
-            sensor_array_pref = cg.RawExpression(f'new esphome::schedule::ArrayPreference<{default_bytes}>()')
-            
-            # Create DataSensor
-            sens = cg.new_Pvariable(sensor_config[CONF_ID])
-            await sensor.register_sensor(sens, sensor_config)
-            
-            # Set the label and item type
-            cg.add(sens.set_label(label))
-            cg.add(sens.set_item_type(item_type))
-            cg.add(sens.set_max_schedule_data_entries(max_entries))
-            cg.add(sens.set_array_preference(sensor_array_pref))
-            
-            # Set off behavior and off value
-            off_behavior_name = sensor_config.get(CONF_OFF_BEHAVIOR, "NAN")
-            off_behavior_enum_map = {
-                "NAN": "DATA_SENSOR_OFF_BEHAVIOR_NAN",
-                "LAST_ON_VALUE": "DATA_SENSOR_OFF_BEHAVIOR_LAST_ON_VALUE",
-                "OFF_VALUE": "DATA_SENSOR_OFF_BEHAVIOR_OFF_VALUE",
-            }
-            cg.add(sens.set_off_behavior(cg.RawExpression(f'esphome::schedule::{off_behavior_enum_map[off_behavior_name]}')))
-            if CONF_OFF_VALUE in sensor_config:
-                cg.add(sens.set_off_value(sensor_config[CONF_OFF_VALUE]))
-            
-            # Set manual behavior and manual value
-            manual_behavior_name = sensor_config.get(CONF_MANUAL_BEHAVIOR, "NAN")
-            manual_behavior_enum_map = {
-                "NAN": "DATA_SENSOR_MANUAL_BEHAVIOR_NAN",
-                "LAST_ON_VALUE": "DATA_SENSOR_MANUAL_BEHAVIOR_LAST_ON_VALUE",
-                "MANUAL_VALUE": "DATA_SENSOR_MANUAL_BEHAVIOR_MANUAL_VALUE",
-            }
-            cg.add(sens.set_manual_behavior(cg.RawExpression(f'esphome::schedule::{manual_behavior_enum_map[manual_behavior_name]}')))
-            if CONF_MANUAL_VALUE in sensor_config:
-                cg.add(sens.set_manual_value(sensor_config[CONF_MANUAL_VALUE]))
-            
-            # Add data item to schedule component
-            cg.add(var.add_data_item(label, item_type))
-            # Register sensor with schedule component
-            cg.add(var.register_data_sensor(sens))
+    # Set up data sensors (state-based: includes OFF/Manual behaviors)
+    await setup_data_sensors(var, config, is_state_based=True)

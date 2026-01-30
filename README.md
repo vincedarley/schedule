@@ -129,14 +129,14 @@ For code snippets and detailed explanations, see **[Configuration Examples](docs
 
 ### NVS (Non-Volatile Storage) Usage
 
-The schedule component uses ESP32's NVS flash memory to persistently store schedules. The `max_schedule_entries` setting pre-allocates NVS space for your schedules.
+The schedule component uses ESP32's NVS flash memory to persistently store schedules. The `max_schedule_size` setting pre-allocates NVS space for your schedules.
 
 **⚠️ Important NVS Considerations:**
 
-- **Over-provisioning Warning:** Setting `max_schedule_entries` too high (e.g., 50+ entries when you only use 10) permanently reserves NVS space that cannot be reclaimed during normal operation
-- **NVS is Limited:** ESP32 NVS partition is typically 12-20KB. Multiple schedule components with large `max_schedule_entries` can exhaust available NVS
-- **Factory Reset Recovery:** Once your device is fully developed and deployed, you can perform a factory reset to free up over-provisioned NVS space by reducing `max_schedule_entries` to actual usage levels
-- **Right-sizing:** Set `max_schedule_entries` to your actual needs + small buffer (e.g., if you use 15 entries, set to 21, not 100)
+- **Over-provisioning Warning:** Setting `max_schedule_size` too high (e.g., 50+ entries when you only use 10) permanently reserves NVS space that cannot be reclaimed during normal operation
+- **NVS is Limited:** ESP32 NVS partition is typically 12-20KB. Multiple schedule components with large `max_schedule_size` can exhaust available NVS
+- **Factory Reset Recovery:** Once your device is fully developed and deployed, you can perform a factory reset to free up over-provisioned NVS space by reducing `max_schedule_size` to actual usage levels
+- **Right-sizing:** Set `max_schedule_size` to your actual needs + small buffer (e.g., if you use 15 entries, set to 21, not 100)
 
 ### State-Based (Switch)
 - Stores ON/OFF time pairs
@@ -193,16 +193,16 @@ switch:
 
 #### Optional Variables
 
-- **`max_schedule_entries`** (*Optional*, int): Maximum number of schedule entries. Default: `21`
-- **`indicator`** (*Optional*, switch config): Visual indicator that mirrors schedule state
+- **`max_schedule_size`** (*Optional*, int): Maximum number of schedule entries. Default: `21`
+- **`schedule_switch_indicator`** (*Optional*, binary_sensor config): Visual indicator that mirrors schedule state
   - **`name`** (string): Indicator display name
   - Auto-generates ID: `{switch_id}_indicator`
-- **`current_event_sensor`** (*Optional*, sensor config): Shows current schedule entry index
+- **`current_event`** (*Optional*, text_sensor config): Shows current schedule entry index
   - **`name`** (string): Sensor display name
-  - Auto-generates ID: `{switch_id}_current_event`
-- **`next_event_sensor`** (*Optional*, sensor config): Shows next schedule entry index
+  - Auto-generates ID: `{switch_id}_current_event_sensor`
+- **`next_event`** (*Optional*, text_sensor config): Shows next schedule entry index
   - **`name`** (string): Sensor display name
-  - Auto-generates ID: `{switch_id}_next_event`
+  - Auto-generates ID: `{switch_id}_next_event_sensor`
 - **`scheduled_data_items`** (*Optional*, list): Custom data fields for schedule entries
   - See [Schedule Data Items](#schedule-data-items) below
 - All other options from [Switch Component](https://esphome.io/components/switch/) are also available (e.g., `icon`, `entity_category`, `disabled_by_default`, `on_turn_on`, `on_turn_off`, etc.).
@@ -224,7 +224,7 @@ scheduled_data_items:
 
 #### Data Item Configuration
 
-- **`id`** (**Required**, ID): Component identifier
+- **`id`** (*Optional*, ID): Component identifier. Auto-generated if not specified. **Must be explicitly provided if you need to access the sensor value in lambdas or C++ code** (e.g., using `SCHEDULE_GET_DATA` macro).
 - **`label`** (**Required**, string): Field name in Home Assistant schedule data
 - **`item_type`** (**Required**, enum): Data type
   - `uint8_t` - 0 to 255 (1 byte)
@@ -396,13 +396,13 @@ button:
 
 #### Optional Variables
 
-- **`max_schedule_entries`** (*Optional*, int): Maximum number of schedule entries. Default: `21`
-- **`current_event_sensor`** (*Optional*, sensor config): Shows current schedule entry index
+- **`max_schedule_size`** (*Optional*, int): Maximum number of schedule entries. Default: `21`
+- **`current_event`** (*Optional*, text_sensor config): Shows current schedule entry index
   - **`name`** (string): Sensor display name
-  - Auto-generates ID: `{button_id}_current_event`
-- **`next_event_sensor`** (*Optional*, sensor config): Shows next schedule entry index
+  - Auto-generates ID: `{button_id}_current_event_sensor`
+- **`next_event`** (*Optional*, text_sensor config): Shows next schedule entry index
   - **`name`** (string): Sensor display name
-  - Auto-generates ID: `{button_id}_next_event`
+  - Auto-generates ID: `{button_id}_next_event_sensor`
 - **`scheduled_data_items`** (*Optional*, list): Custom data fields for schedule entries
   - See [Schedule Data Items](#button-schedule-data-items) below
 - All other options from [Button Component](https://esphome.io/components/button/) are also available (e.g., `icon`, `entity_category`, `disabled_by_default`, etc.).
@@ -420,7 +420,7 @@ scheduled_data_items:
 
 #### Data Item Configuration
 
-- **`id`** (**Required**, ID): Component identifier
+- **`id`** (*Optional*, ID): Component identifier. Auto-generated if not specified. **Must be explicitly provided if you need to access the sensor value in lambdas or C++ code** (e.g., using `SCHEDULE_GET_DATA` macro).
 - **`label`** (**Required**, string): Field name in Home Assistant schedule data
 - **`item_type`** (**Required**, enum): Data type
   - `uint8_t` - 0 to 255
@@ -800,7 +800,7 @@ sensor:
 
 **Solution:**
 - Reduce number of schedule entries in HA
-- Increase `max_schedule_entries` in ESPHome (default: 21)
+- Increase `max_schedule_size` in ESPHome (default: 21)
 - Consider splitting into multiple schedules
 
 ### Best Practices
@@ -808,7 +808,7 @@ sensor:
 1. **Consistent Naming:** Use clear, descriptive names for schedules and data fields
 2. **Field Name Matching:** Always ensure ESPHome `label` matches HA field name exactly
 3. **Data Types:** Use appropriate data types to save storage
-4. **Entry Limits:** Keep entries under limit (default 21) or adjust `max_schedule_entries`
+4. **Entry Limits:** Keep entries under limit (default 21) or adjust `max_schedule_size`
 5. **Manual Updates:** Press update button after modifying HA schedule
 6. **Validation:** Check ESPHome logs and HA notifications for errors
 
@@ -832,19 +832,19 @@ Choose the right platform for storage efficiency:
 
 **NVS Space Management:**
 
-The `max_schedule_entries` setting pre-allocates NVS space. To calculate total NVS usage:
+The `max_schedule_size` setting pre-allocates NVS space. To calculate total NVS usage:
 
 ```
-State-Based: (max_schedule_entries × 4) + 4 bytes per schedule
-Event-Based: (max_schedule_entries × 2) + 4 bytes per schedule
+State-Based: (max_schedule_size × 4) + 4 bytes per schedule
+Event-Based: (max_schedule_size × 2) + 4 bytes per schedule
 ```
 
 **Example - Multiple Schedules:**
-- 3 switches with max_schedule_entries=21: 3 × 88 = **264 bytes**
-- 2 buttons with max_schedule_entries=21: 2 × 46 = **92 bytes**
+- 3 switches with max_schedule_size=21: 3 × 88 = **264 bytes**
+- 2 buttons with max_schedule_size=21: 2 × 46 = **92 bytes**
 - **Total NVS:** 356 bytes
 
-**⚠️ Best Practice:** Only allocate what you need. Setting max_schedule_entries=100 "just in case" wastes valuable NVS space. If you later need to reduce it, a factory reset will be required to reclaim the space.
+**⚠️ Best Practice:** Only allocate what you need. Setting max_schedule_size=100 "just in case" wastes valuable NVS space. If you later need to reduce it, a factory reset will be required to reclaim the space.
 
 ### Performance Characteristics
 
@@ -886,9 +886,9 @@ Schedules are stored in ESP32 NVS (Non-Volatile Storage) flash and persist acros
 
 **Factory Reset (NVS Recovery):**
 
-If you've over-provisioned `max_schedule_entries` during development, you can reclaim NVS space:
+If you've over-provisioned `max_schedule_size` during development, you can reclaim NVS space:
 
-1. Reduce `max_schedule_entries` in your YAML to actual needs
+1. Reduce `max_schedule_size` in your YAML to actual needs
 2. Perform a factory reset (clears all NVS data)
 3. Recompile and upload firmware
 4. Re-download schedules from Home Assistant

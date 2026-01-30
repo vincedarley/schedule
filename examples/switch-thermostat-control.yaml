@@ -111,7 +111,7 @@ switch:
     id: heating_schedule
     name: "Heating Schedule"
     ha_schedule_entity_id: "schedule.heating"
-    max_schedule_entries: 21
+    max_schedule_size: 21
     
     schedule_update_button:
       name: "Update Heating Schedule"

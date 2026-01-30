@@ -186,7 +186,7 @@ CONF_UPDATE_ON_RECONNECT = "update_schedule_from_ha_on_reconnect"
 # C++ classes
 ScheduleClimate = schedule_ns.class_("ScheduleClimate", climate.Climate, StateBasedSchedulable)
 UpdateScheduleButton = schedule_ns.class_("UpdateScheduleButton", button.Button, cg.Component)
-ScheduleStateModeSelect = schedule_ns.class_("ScheduleStateModeSelect", select.Select, cg.Component)
+StateModeSelect = schedule_ns.class_("StateModeSelect", select.Select, cg.Component)
 
 SCHEDULE_MODE_OPTIONS = [
     "Manual Off",
@@ -235,7 +235,7 @@ CONFIG_SCHEMA = climate.climate_schema(
     ),
     cv.Required(CONF_MODE_SELECT): cv.maybe_simple_value(
         select.select_schema(
-            ScheduleStateModeSelect,
+            StateModeSelect,
             entity_category=ENTITY_CATEGORY_CONFIG,
         ),
         key=CONF_NAME,
@@ -355,7 +355,7 @@ climate:
     id: heating
     name: "Heating Schedule"
     ha_schedule_entity_id: "schedule.heating"
-    max_schedule_entries: 21
+    max_schedule_size: 21
     
     schedule_update_button:
       name: "Update Heating Schedule"
@@ -530,7 +530,7 @@ CONF_UPDATE_ON_RECONNECT = "update_schedule_from_ha_on_reconnect"
 # C++ classes
 ScheduleCover = schedule_ns.class_("ScheduleCover", cover.Cover, EventBasedSchedulable)
 UpdateScheduleButton = schedule_ns.class_("UpdateScheduleButton", button.Button, cg.Component)
-ScheduleEventModeSelect = schedule_ns.class_("ScheduleEventModeSelect", select.Select, cg.Component)
+EventModeSelect = schedule_ns.class_("EventModeSelect", select.Select, cg.Component)
 
 SCHEDULE_COVER_MODE_OPTIONS = [
     "Disabled",
@@ -576,7 +576,7 @@ CONFIG_SCHEMA = cover.cover_schema(
     ),
     cv.Required(CONF_MODE_SELECT): cv.maybe_simple_value(
         select.select_schema(
-            ScheduleEventModeSelect,
+            EventModeSelect,
             entity_category=ENTITY_CATEGORY_CONFIG,
         ),
         key=CONF_NAME,
@@ -671,7 +671,7 @@ cover:
     id: blinds
     name: "Blinds Schedule"
     ha_schedule_entity_id: "schedule.blinds"
-    max_schedule_entries: 10
+    max_schedule_size: 10
     
     schedule_update_button:
       name: "Update Blinds Schedule"

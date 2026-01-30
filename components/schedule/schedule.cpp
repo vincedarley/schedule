@@ -10,7 +10,8 @@ namespace schedule {
 // Logging tag
 static const char *TAG = "schedule";
 
-
+// TODO: Raise HA notification when sched id doesnot exist
+// TODO: Check State base text sensor shows correct event strings in all modes
 
 // TODO: Add handling for empty schedule on update from HA in respect to a valid schedule empty, Mode select and switch state
 
@@ -128,14 +129,15 @@ void Schedule::setup() {
     ESP_LOGI(TAG, "Initial Home Assistant API connection status: %s", this->ha_connected_ ? "connected" : "disconnected");
     this->last_connection_check_ = millis();
     
-    // Notify derived class of initial empty state (for mode select initialization)
+// Notify derived class of initial empty state (for mode select initialization)
     this->on_schedule_empty_changed(this->schedule_empty_);
+    
     
    // If get schedule on reconnect is set and we are connected request schedule or if schedule is not valid or entity ID changed
     if ((this->ha_connected_ && this->update_on_reconnect_) || 
         (this->ha_connected_ && this->schedule_valid_ == false) ||
         (this->ha_connected_ && this->entity_id_changed_)) {
-        ESP_LOGD(TAG, "Requesting update from Home Assistant");
+        ESP_LOGD(TAG, "Requesting update from Home Assistant during setup");
         if (this->entity_id_changed_) {
             // Invalidate old schedule since it's for a different entity
             this->schedule_valid_ = false;
@@ -192,7 +194,7 @@ void Schedule::dump_config_base() {
 // STATE MACHINE HELPER METHODS
 //==============================================================================
 
-Schedule::PrerequisiteError Schedule::check_prerequisites_() {
+Schedule::PrerequisiteError Schedule::check_prerequisites_() {  
     // Check time validity
     if (!this->rtc_time_valid_) {
         this->check_rtc_time_valid_();
@@ -616,10 +618,11 @@ void Schedule::load_schedule_from_pref_() {
         uint8_t *buf = this->sched_array_pref_->data();
         std::memcpy(temp_buffer.data(), buf, this->sched_array_pref_->size());
         // Check for terminator [0xFFFF, 0xFFFF] - used by both state-based and event-based
-        for (size_t i = 0; i < this->schedule_max_size_; i += 2) {
+        // Check every position (not just even indices) since event-based schedules can have
+        // terminator at odd positions
+        for (size_t i = 0; i < this->schedule_max_size_ - 1; i++) {
             if (temp_buffer[i] == 0xFFFF && temp_buffer[i + 1] == 0xFFFF) {
-                ESP_LOGI(TAG, "Found terminator at index %u; actual schedule size is %u entries", 
-                         static_cast<unsigned>(i / 2), static_cast<unsigned>(i));
+                ESP_LOGI(TAG, "Found terminator at index %u", static_cast<unsigned>(i));
                 // Schedule is empty if terminator is at the very first position
                 this->schedule_empty_ = (i == 0);
                 ok=true;
@@ -641,15 +644,22 @@ void Schedule::load_schedule_from_pref_() {
         for (size_t i = 0; i < this->schedule_max_size_; ++i) {
             this->schedule_times_in_minutes_.push_back(temp_buffer[i]);
         }
-        //this->schedule_empty_ = false;
-        this->schedule_valid_ = true;   
-        ESP_LOGI(TAG, "Loaded %u uint16_t values from preferences", 
-                 static_cast<unsigned>(this->schedule_times_in_minutes_.size()));
+        
+        // Only mark as valid if schedule has actual entries (not just empty terminator)
+        if (this->schedule_empty_) {
+            this->schedule_valid_ = false;  // Empty schedule is invalid - trigger download
+            ESP_LOGI(TAG, "Schedule is empty, marking as invalid to trigger download");
+        } else {
+            this->schedule_valid_ = true;
+            ESP_LOGI(TAG, "Loaded %u uint16_t values from preferences", 
+                     static_cast<unsigned>(this->schedule_times_in_minutes_.size()));
+        }
         
     } else {
         // No stored data: use factory defaults and persist them
         this->schedule_times_in_minutes_ = this->factory_reset_values_;
         this->schedule_empty_ = true;
+        this->schedule_valid_ = false;  // Mark as invalid to trigger download on first boot
         if (this->schedule_times_in_minutes_.size() > this->schedule_max_size_) {
             this->schedule_times_in_minutes_.resize(this->schedule_max_size_);
         }
@@ -663,12 +673,13 @@ void Schedule::load_schedule_from_pref_() {
         sched_array_pref_->save();
         ESP_LOGI(TAG, "No stored values; using factory defaults and saving them");
     }
-    // Debug log values
-    log_state_flags_();
-    for (size_t i = 0; i < this->schedule_times_in_minutes_.size(); ++i) {
+    
+    // Log final state after load completes
+    ESP_LOGI(TAG, "After load: schedule_valid=%d, schedule_empty=%d", this->schedule_valid_, this->schedule_empty_);
+//    for (size_t i = 0; i < this->schedule_times_in_minutes_.size(); ++i) {
 		// Log index and value in hex format
-        ESP_LOGV(TAG, "schedule_times_in_minutes_[%u] = 0x%04X", static_cast<unsigned>(i), this->schedule_times_in_minutes_[i]);
-    } 
+ //       ESP_LOGV(TAG, "schedule_times_in_minutes_[%u] = 0x%04X", static_cast<unsigned>(i), this->schedule_times_in_minutes_[i]);
+    //} 
 }
 
 void Schedule::save_schedule_to_pref_() {

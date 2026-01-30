@@ -78,7 +78,7 @@ button:
     id: blinds_schedule
     name: "Blinds Schedule"
     ha_schedule_entity_id: "schedule.blinds"
-    max_schedule_entries: 10
+    max_schedule_size: 10
     
     schedule_update_button:
       name: "Update Blinds Schedule"
@@ -86,10 +86,10 @@ button:
     mode_selector:
       name: "Blinds Mode"
     
-    current_event_sensor:
+    current_event:
       name: "Current Blinds Event"
     
-    next_event_sensor:
+    next_event:
       name: "Next Blinds Event"
     
     scheduled_data_items:

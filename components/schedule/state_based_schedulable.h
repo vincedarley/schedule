@@ -6,7 +6,7 @@ namespace esphome {
 namespace schedule {
 
 // Forward declaration
-class ScheduleStateModeSelect;
+class StateModeSelect;
 
 // State-based schedule states (complete state machine for Switch platform)
 enum StateBasedScheduleState {
@@ -68,86 +68,12 @@ class StateBasedSchedulable : public Schedule {
   }
   
   /** State-based components use the full state machine with modes */
-  void loop() override {
-    uint32_t now = millis();
-    
-    // Periodic logging every 60 seconds
-    if (now - this->last_state_log_time_ >= 60000) {
-      this->last_state_log_time_ = now;
-      this->log_state_flags_();
-      ESP_LOGV("schedule", "Schedule loop state: %d", this->current_state_);
-      ESP_LOGV("schedule", "Current mode: %d", this->current_mode_);
-    }
-
-    // Normal operation - run every second
-    if (now - this->last_time_check_ >= 1000) {
-      this->last_time_check_ = now;
-      
-      // Check all prerequisites (returns error code)
-      auto prereq_error = this->check_prerequisites_();
-      
-      // Handle prerequisite errors with state transitions
-      if (prereq_error != PREREQ_OK) {
-        // Map prerequisite errors to states
-        if (prereq_error == PREREQ_TIME_INVALID) {
-          if (this->current_state_ != STATE_TIME_INVALID) {
-            ESP_LOGW("schedule", "Time is not valid, schedule operations paused");
-            this->current_state_ = STATE_TIME_INVALID;
-          }
-        } else if (prereq_error == PREREQ_SCHEDULE_INVALID) {
-          if (this->current_state_ != STATE_SCHEDULE_INVALID) {
-            ESP_LOGW("schedule", "Schedule is not valid and Home Assistant not connected");
-            this->current_state_ = STATE_SCHEDULE_INVALID;
-          }
-        } else if (prereq_error == PREREQ_SCHEDULE_EMPTY) {
-          if (this->current_state_ != STATE_SCHEDULE_EMPTY) {
-            ESP_LOGI("schedule", "Schedule is empty, no events to process");
-            this->current_state_ = STATE_SCHEDULE_EMPTY;
-          }
-        }
-        // Handle state change for error states
-        this->handle_state_change_();
-        return;
-      }
-      
-      // Prerequisites OK - transition from error states to INIT if needed
-      if ((this->current_state_ == STATE_TIME_INVALID || 
-           this->current_state_ == STATE_SCHEDULE_INVALID || 
-           this->current_state_ == STATE_SCHEDULE_EMPTY) && 
-          prereq_error == PREREQ_OK) {
-        this->current_state_ = STATE_INIT;
-        ESP_LOGV("schedule", "Prerequisites met, transitioning to INIT state");
-      }
-      
-      // Handle initialization state
-      if (this->current_state_ == STATE_INIT) {
-        this->initialize_schedule_operation_();
-        ESP_LOGI("schedule", "Normal operation, mode = %d State = %d", this->current_mode_, this->current_state_);
-        return;  // Exit to allow next iteration to handle normal operation
-      }
-      
-      // Skip if still in error states
-      if (this->current_state_ == STATE_TIME_INVALID ||
-          this->current_state_ == STATE_SCHEDULE_INVALID ||
-          this->current_state_ == STATE_SCHEDULE_EMPTY) {
-        return;
-      }
-      
-      // Update current state based on mode and event state
-      this->current_state_ = this->mode_to_state_(this->current_mode_, this->event_switch_state_);
-      
-      // Handle state changes - this will only process if state differs from processed_state_
-      this->handle_state_change_();
-      
-      // Check and advance schedule events if time has reached next event
-      this->check_and_advance_events_();
-    }
-  }
+  void loop() override;
   
   //============================================================================
   // MODE MANAGEMENT (state-based only)
   //============================================================================
-  void set_mode_select(ScheduleStateModeSelect *mode_select);
+  void set_mode_select(StateModeSelect *mode_select);
   void set_mode_option(ScheduleMode mode);
   void on_mode_changed(const std::string &mode);
   
@@ -189,7 +115,7 @@ class StateBasedSchedulable : public Schedule {
   //============================================================================
   // STATE-SPECIFIC MEMBER VARIABLES
   //============================================================================
-  ScheduleStateModeSelect *mode_select_{nullptr};
+  StateModeSelect *mode_select_{nullptr};
   ScheduleMode current_mode_{SCHEDULE_MODE_MANUAL_OFF};
   bool event_switch_state_{false};  // Current ON/OFF state from schedule
   
