@@ -130,7 +130,7 @@ void Schedule::setup() {
     this->last_connection_check_ = millis();
     
 // Notify derived class of initial empty state (for mode select initialization)
-    this->on_schedule_empty_changed(this->schedule_empty_);
+    this->on_schedule_empty_changed(this->schedule_empty_, this->schedule_requested_);
     
     
    // If get schedule on reconnect is set and we are connected request schedule or if schedule is not valid or entity ID changed
@@ -146,6 +146,7 @@ void Schedule::setup() {
             // Clear the flag after handling the change
             this->entity_id_changed_ = false;
         }
+        this->schedule_requested_ = true;  // Mark that we've requested
         this->request_schedule();
     } else if (this->entity_id_changed_) {
         ESP_LOGW(TAG, "Entity ID changed but Home Assistant not connected - using old schedule until connected");
@@ -210,30 +211,42 @@ Schedule::PrerequisiteError Schedule::check_prerequisites_() {
         if (now - this->last_connection_check_ >= check_interval) {
             this->last_connection_check_ = now;
             this->check_ha_connection_();
-            
-            // If we just reconnected, request schedule update if configured or needed
-            if ((this->ha_connected_ && this->update_on_reconnect_) || 
-                (this->ha_connected_ && this->schedule_valid_ == false) ||
-                (this->ha_connected_ && this->entity_id_changed_)) {
-                ESP_LOGI(TAG, "Reconnected to Home Assistant, requesting schedule update...");
+        }
+    }
+    
+    // While auto-request is pending, return OK to allow state machine to continue
+    // This prevents state-based schedules from blocking on early returns
+    if (this->pending_auto_request_) {
+        uint32_t elapsed = millis() - this->auto_request_scheduled_time_;
+        ESP_LOGD(TAG, "Pending auto-request check: ha_connected=%d, ha_services_subscribed=%d, elapsed=%ums",
+                 this->ha_connected_, this->ha_services_subscribed_, elapsed);
+        
+        // Execute the request once HA is connected, services are subscribed, and 2 seconds have passed
+        if (this->ha_connected_ && this->ha_services_subscribed_) {
+            if (elapsed >= 2000) {  // Wait 2 seconds for services to be fully subscribed
+                ESP_LOGI(TAG, "HA services ready, executing pending auto-request...");
                 if (this->entity_id_changed_) {
                     ESP_LOGI(TAG, "Entity ID changed (hash: 0x%08X -> 0x%08X), invalidating old schedule",
                              this->stored_entity_id_hash_, fnv1_hash(this->ha_schedule_entity_id_));
-                    // Invalidate old schedule since it's for a different entity
                     this->schedule_valid_ = false;
                     this->schedule_empty_ = true;
                     this->save_entity_id_to_pref_();
-                    // Clear the flag after handling the change
                     this->entity_id_changed_ = false;
                 }
+                this->schedule_requested_ = true;
+                this->pending_auto_request_ = false;
                 this->request_schedule();
+                this->on_schedule_empty_changed(this->schedule_empty_, true);
+            } else {
+                ESP_LOGD(TAG, "Waiting for 2-second delay: %ums/%ums elapsed", elapsed, 2000);
             }
+        } else {
+            ESP_LOGW(TAG, "Cannot execute: HA flags not ready (connected=%d, services=%d)",
+                     this->ha_connected_, this->ha_services_subscribed_);
         }
-        
-        // If not connected and schedule is not valid, return error
-        if (!this->schedule_valid_ && !this->ha_connected_) {
-            return PREREQ_SCHEDULE_INVALID;
-        }
+        // Return OK regardless of whether request has executed yet
+        // This allows normal operation while waiting for/executing auto-request
+        return PREREQ_OK;
     }
     
     // Check schedule validity
@@ -294,10 +307,23 @@ void Schedule::check_ha_connection_() {
         // Just reconnected
         this->ha_connected_ = true;
         this->ha_connected_once_ = true;  // Mark that we've connected at least once
+        this->ha_services_subscribed_ = true;  // Services will be subscribed after connection
         ESP_LOGI(TAG, "Home Assistant API reconnected");
+        
+        // Set flag to trigger auto-request once services are ready
+        ESP_LOGD(TAG, "Auto-request conditions: update_on_reconnect=%d, schedule_valid=%d, entity_id_changed=%d",
+                 this->update_on_reconnect_, this->schedule_valid_, this->entity_id_changed_);
+        if (this->update_on_reconnect_ || !this->schedule_valid_ || this->entity_id_changed_) {
+          ESP_LOGI(TAG, "Scheduling auto-request for when services are ready...");
+          this->pending_auto_request_ = true;
+          this->auto_request_scheduled_time_ = millis();
+        } else {
+          ESP_LOGW(TAG, "NOT scheduling auto-request - all conditions false");
+        }
       } else {
         // Disconnected
         this->ha_connected_ = false;
+        this->ha_services_subscribed_ = false;
         ESP_LOGI(TAG, "Home Assistant API disconnected");
       }
     }
@@ -316,7 +342,6 @@ void Schedule::log_state_flags_() {
 //==============================================================================
 
 void Schedule::initialize_schedule_operation_() {
-    ESP_LOGI(TAG, "Initializing operation");
     
     if (this->time_ == nullptr) {
         ESP_LOGW(TAG, "Cannot initialize schedule operation: no time component");
@@ -331,9 +356,6 @@ void Schedule::initialize_schedule_operation_() {
     }
     // Calculate current time in minutes from start of week
     uint16_t current_time_minutes = this->time_to_minutes_(now);
-    
-    ESP_LOGD(TAG, "Current time: Day %u, %02d:%02d (week minute: %u)", 
-             now.day_of_week, now.hour, now.minute, current_time_minutes);
     
     // Find current active event
     current_event_index_ = this->find_current_event_(current_time_minutes);
@@ -371,7 +393,8 @@ void Schedule::initialize_schedule_operation_() {
         }
     }
     
-	ESP_LOGV(TAG,"current_event_raw_: 0x%04X, next_event_raw_: 0x%04X current_event_index: %d, next_event_index: %d", this->current_event_raw_, this->next_event_raw_, current_event_index_, this->next_event_index_);
+	ESP_LOGV(TAG,"[%s] current_event_raw_: 0x%04X, next_event_raw_: 0x%04X current_event_index: %d, next_event_index: %d", 
+             this->get_name().c_str(), this->current_event_raw_, this->next_event_raw_, current_event_index_, this->next_event_index_);
     uint16_t next_event_time = this->next_event_raw_ & TIME_MASK;
 
     // Determine if current event is an "on" or "off" event
@@ -380,13 +403,17 @@ void Schedule::initialize_schedule_operation_() {
     ESP_LOGV(TAG, "Current event index: %d, time: %s, state: %s", 
              current_event_index_, this->format_event_time_(current_event_time).c_str(), in_event ? "ON" : "OFF");
     
+    // Note: last_processed_minute_ remains at 0xFFFF to allow first check_and_advance_events_() call to process
+    
     ESP_LOGD(TAG, "Schedule operation initialized");
 }
 
 int16_t Schedule::find_current_event_(uint16_t current_time_minutes) {
     const uint16_t TIME_MASK = 0x3FFF;  // Mask to extract time (bits 0-13)
+    const uint16_t SUNDAY_START = 6 * 1440;  // Sunday starts at minute 8640
     
     int16_t current_index = -1;  // No event yet
+    bool on_sunday = (current_time_minutes >= SUNDAY_START);
     
     for (size_t i = 0; i < this->schedule_times_in_minutes_.size(); i++) {
         uint16_t entry_raw = this->schedule_times_in_minutes_[i];
@@ -398,14 +425,29 @@ int16_t Schedule::find_current_event_(uint16_t current_time_minutes) {
         
         // Extract time value (mask off top 2 bits)
         uint16_t entry_time = entry_raw & TIME_MASK;
+        bool entry_state = (entry_raw & 0x4000) != 0;  // bit 14
         
-        // If this entry's time has passed, it becomes the current event
-        if (entry_time <= current_time_minutes) {
-            current_index = static_cast<int16_t>(i);			
+        // Check if this event has actually passed
+        bool event_has_passed;
+        bool skip_mon_sat_event = false;
+        
+        if (on_sunday && entry_time < SUNDAY_START) {
+            // We're on Sunday, but this event is Mon-Sat (next week), so it hasn't passed
+            // Don't break - continue scanning to find Sunday events later in array
+            event_has_passed = false;
+            skip_mon_sat_event = true;
         } else {
-            // Once we hit a future entry, stop searching
+            // Normal comparison
+            event_has_passed = (entry_time <= current_time_minutes);
+        }
+        
+        if (event_has_passed) {
+            current_index = static_cast<int16_t>(i);			
+        } else if (!skip_mon_sat_event) {
+            // Once we hit a genuinely future entry (not Mon-Sat when on Sunday), stop searching
             break;
         }
+        // If skip_mon_sat_event is true, continue to next iteration without breaking
     }
    
     // If no event has occurred yet this week, wrap around to the last event from previous week
@@ -426,8 +468,23 @@ int16_t Schedule::find_current_event_(uint16_t current_time_minutes) {
 }
 
 bool Schedule::should_advance_to_next_event_(uint16_t current_time_minutes) {
+    const uint16_t SUNDAY_START = 8640;  // Minute 8640 = start of Sunday (Mon 00:00 + 6*24*60)
+    
     uint16_t next_event_time = this->next_event_raw_ & TIME_MASK;
     uint16_t current_event_time = this->current_event_raw_ & TIME_MASK;
+    
+    // Check if we're currently on Sunday
+    bool on_sunday = (current_time_minutes >= SUNDAY_START);
+    
+    // Check if next event is Monday-Saturday (before Sunday in the week encoding)
+    bool next_is_mon_to_sat = (next_event_time < SUNDAY_START);
+    
+    // CRITICAL: If we're on Sunday and next event is Monday-Saturday, don't advance yet
+    // This prevents advancing from Sunday events to Monday events before Sunday ends
+    if (on_sunday && next_is_mon_to_sat) {
+        ESP_LOGD(TAG, "[%s] On Sunday, next is Mon-Sat, blocking advance", this->get_name().c_str());
+        return false;
+    }
     
     // Check if schedule wrapped around (next event is earlier in week than current)
     bool wrapped_around = (next_event_time < current_event_time);
@@ -440,18 +497,29 @@ bool Schedule::should_advance_to_next_event_(uint16_t current_time_minutes) {
     static uint32_t last_debug_log = 0;
     if (millis() - last_debug_log >= 60000) {
         last_debug_log = millis();
-        ESP_LOGD(TAG, "Event check: current_time=%u, next_event=%u, current_event=%u, wrapped=%s, time_wrapped=%s", 
-                 current_time_minutes, next_event_time, current_event_time, 
+        ESP_LOGD(TAG, "[%s] Event check: current_time=%u, next_event=%u, current_event=%u, wrapped=%s, time_wrapped=%s", 
+                 this->get_name().c_str(), current_time_minutes, next_event_time, current_event_time, 
                  wrapped_around ? "Y" : "N", time_has_wrapped ? "Y" : "N");
     }
     
     // Advance to next event if:
     // 1. Current time has reached next event time AND
     // 2. Either we haven't wrapped, OR we have wrapped AND time has also wrapped
-    return (current_time_minutes >= next_event_time && (!wrapped_around || time_has_wrapped));
+    bool should_advance = (current_time_minutes >= next_event_time && (!wrapped_around || time_has_wrapped));
+    
+    // Log when we're close to advancing
+    if (current_time_minutes >= next_event_time - 2 && current_time_minutes <= next_event_time + 2) {
+        ESP_LOGD(TAG, "[%s] Near event time: should_advance=%s, time>=%u, next=%u, wrapped=%s", 
+                 this->get_name().c_str(), should_advance ? "Y" : "N",
+                 current_time_minutes, next_event_time, wrapped_around ? "Y" : "N");
+    }
+    
+    return should_advance;
 }
 
 void Schedule::advance_to_next_event_() {
+    ESP_LOGD(TAG, "Advancing from event index %d to next event", this->current_event_index_);
+    
     // Current event becomes the next event
     this->current_event_raw_ = this->next_event_raw_;
     this->current_event_index_ = this->next_event_index_;
@@ -459,7 +527,7 @@ void Schedule::advance_to_next_event_() {
     // Check if we've reached the end of the schedule
     if (this->schedule_times_in_minutes_[this->current_event_index_ + 1] == 0xFFFF) {
         // End of schedule reached, roll over to start
-        ESP_LOGI(TAG, "End of schedule reached, rolling over to start of schedule");
+        ESP_LOGD(TAG, "End of schedule reached, rolling over to start of schedule");
         this->next_event_raw_ = this->schedule_times_in_minutes_[0];
         this->next_event_index_ = 0;
     } else {
@@ -467,9 +535,17 @@ void Schedule::advance_to_next_event_() {
         this->next_event_raw_ = this->schedule_times_in_minutes_[this->current_event_index_ + 1];
         this->next_event_index_ = this->current_event_index_ + 1;
     }
+    
+    ESP_LOGD(TAG, "Advanced to event index %d, next event index %d", 
+             this->current_event_index_, this->next_event_index_);
 }
 
 void Schedule::check_and_advance_events_() {
+    // Don't process before initialization completes
+    if (this->current_event_index_ < 0) {
+        return;
+    }
+    
     // Get current time in minutes
     auto now_time = this->time_->now();
     uint16_t current_time_minutes = this->time_to_minutes_(now_time);
@@ -866,13 +942,14 @@ void Schedule::send_ha_notification_(const std::string &message, const std::stri
 void Schedule::request_schedule() {
     #ifdef USE_API
         if (this->ha_get_schedule_action_ == nullptr) {
-        ESP_LOGW(TAG, "Schedule action not ready");
+        ESP_LOGW(TAG, "Schedule action not ready - cannot request schedule");
         return;
         }
+        ESP_LOGI(TAG, "Requesting schedule from Home Assistant for entity: %s", this->ha_schedule_entity_id_.c_str());
         // Play action with no template args
         this->ha_get_schedule_action_->play();
     #else
-        ESP_LOGW(TAG, " API not enabled");
+        ESP_LOGW(TAG, "API not enabled - cannot request schedule");
     #endif
 }
 
@@ -1068,6 +1145,7 @@ void Schedule::process_schedule_(const ArduinoJson::JsonObjectConst &response) {
     save_schedule_to_pref_();
     // Mark schedule as valid after successful processing
     this->schedule_valid_ = true;
+    this->schedule_requested_ = false;  // Reset flag now that we have valid schedule
     
     // Set schedule_empty based on whether we found any schedule entries
     this->schedule_empty_ = is_empty;
@@ -1078,7 +1156,7 @@ void Schedule::process_schedule_(const ArduinoJson::JsonObjectConst &response) {
     
     // Always notify derived class on schedule update to ensure mode select is updated
     // (not just when empty state changes, to handle edge cases)
-    this->on_schedule_empty_changed(is_empty);
+    this->on_schedule_empty_changed(is_empty, this->schedule_requested_);
     
     // IMPORTANT: Force reinitialization to find new current/next events
     // The loop() will detect INIT state and call initialize_schedule_operation_()

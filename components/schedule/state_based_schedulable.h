@@ -110,7 +110,7 @@ class StateBasedSchedulable : public Schedule {
   }
   
   /** Update mode select options when schedule empty state changes */
-  void on_schedule_empty_changed(bool is_empty) override;
+  void on_schedule_empty_changed(bool is_empty, bool schedule_pending) override;
   
   //============================================================================
   // STATE-SPECIFIC MEMBER VARIABLES
@@ -121,7 +121,9 @@ class StateBasedSchedulable : public Schedule {
   
   // State machine
   int current_state_{STATE_INIT};
-  int processed_state_{STATE_INIT};
+  int processed_state_{-1};  // Initialize to invalid state to ensure first state change is always processed
+  bool initialized_since_boot_{false};  // Track if initialization has run since boot
+  bool first_loop_{true};  // Track first loop iteration for mode restoration
 };
 
 } // namespace schedule

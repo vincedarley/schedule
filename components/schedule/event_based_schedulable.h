@@ -71,6 +71,9 @@ class EventBasedSchedulable : public Schedule {
   /** Set the mode select component (simplified - only Disabled/Enabled) */
   void set_mode_select(EventModeSelect *mode_select);
   
+  /** Called when mode select value changes */
+  void on_mode_changed(const std::string &mode);
+  
   // Logging - event-based format (single events, not ON/OFF pairs)
   void log_schedule_data() override;
   
@@ -137,7 +140,7 @@ class EventBasedSchedulable : public Schedule {
   }
   
   /** Update mode select options when schedule empty state changes */
-  void on_schedule_empty_changed(bool is_empty) override;
+  void on_schedule_empty_changed(bool is_empty, bool schedule_pending) override;
   
  private:
   //============================================================================

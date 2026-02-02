@@ -282,6 +282,8 @@ schedule.heating:
 |---------|-------------|-------------|
 | Storage | 4 bytes/entry | 2 bytes/entry |
 | Modes | 5 (Manual Off/On, Auto, Early Off, Boost) | 2 (Disabled, Enabled) |
+| Mode Visibility | All 5 always visible in HA | Both always visible in HA |
+| Invalid Mode | Auto-reverts to Manual Off with HA notification | Auto-reverts to Disabled with HA notification |
 | Use Case | Continuous state (heater ON/OFF) | One-time actions (open blinds) |
 | Examples | Switch, Climate, Light | Button, Cover, Lock |
 | Data Behaviors | OFF & Manual behaviors | No special behaviors |

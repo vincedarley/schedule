@@ -264,8 +264,13 @@ class Schedule : public Component  {
   
   /** Handle schedule empty state change - update mode select options accordingly
    * Virtual method - state-based schedulable overrides to update mode options
+   * @param is_empty True if schedule has no events
+   * @param schedule_pending True if schedule download has been requested from HA
    */
-  virtual void on_schedule_empty_changed(bool is_empty) {}
+  virtual void on_schedule_empty_changed(bool is_empty, bool schedule_pending) {}
+  
+  /** Check if schedule download is pending from Home Assistant */
+  bool is_schedule_pending() const { return schedule_requested_; }
 
   //============================================================================
   // TEST AND DEBUG METHODS
@@ -308,9 +313,9 @@ class Schedule : public Component  {
   // EVENT MANAGEMENT AND SCHEDULING
   //============================================================================
   virtual void initialize_schedule_operation_();
+  int16_t find_current_event_(uint16_t current_time_minutes);
 
  private:
-  int16_t find_current_event_(uint16_t current_time_minutes);
   
   //============================================================================
   // TIME AND FORMATTING UTILITIES
@@ -365,16 +370,6 @@ class Schedule : public Component  {
   text_sensor::TextSensor *current_event_sensor_{nullptr};
   text_sensor::TextSensor *next_event_sensor_{nullptr};
   
-  // Status flags
-  bool ha_connected_{false};
-  bool ha_connected_once_{false};
-  bool rtc_time_valid_{false};
-  bool schedule_valid_{false};
-  bool schedule_empty_{true};
-  bool update_on_reconnect_{false};
-  bool entity_id_changed_{false};
-
-  
   // Timing
   uint32_t last_connection_check_{0};
   
@@ -383,6 +378,19 @@ class Schedule : public Component  {
   uint32_t last_time_check_{0};
   uint32_t last_state_log_time_{0};
   time::RealTimeClock *time_{nullptr};
+  
+  // Status flags (protected for derived class access)
+  bool ha_connected_{false};
+  bool ha_connected_once_{false};
+  bool ha_services_subscribed_{false};  // True after subscribe_homeassistant_services completes
+  bool rtc_time_valid_{false};
+  bool schedule_valid_{false};
+  bool schedule_empty_{true};
+  bool update_on_reconnect_{false};
+  bool entity_id_changed_{false};
+  bool schedule_requested_{false};  // Track if we've requested invalid schedule to prevent loops
+  bool pending_auto_request_{false};  // Track if auto-request should execute once services are ready
+  uint32_t auto_request_scheduled_time_{0};  // Timestamp when auto-request was scheduled
   
   // Time utilities (protected for derived class access)
   // Template function must be defined in header
@@ -400,6 +408,7 @@ class Schedule : public Component  {
   uint16_t next_event_raw_{0};
   int16_t current_event_index_{-1};
   int16_t next_event_index_{-1};
+  uint16_t last_processed_minute_{0xFFFF};  // Track last minute processed to prevent duplicate advances
   
  private:
   // Entity ID tracking

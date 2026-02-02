@@ -101,6 +101,7 @@ async def to_code(config):
     mode_select_var = await select.new_select(config[CONF_MODE_SELECT], options=SCHEDULE_BUTTON_MODE_OPTIONS)
     await cg.register_component(mode_select_var, config[CONF_MODE_SELECT])
     cg.add(mode_select_var.set_schedule(var))
+    cg.add(mode_select_var.set_schedulable(var))
     cg.add(var.set_mode_select(mode_select_var))
     
     # Set up data sensors (event-based: no OFF/Manual behaviors)

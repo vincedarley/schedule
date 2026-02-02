@@ -9,8 +9,9 @@
 namespace esphome {
 namespace schedule {
 
-// Forward declaration
+// Forward declarations
 class Schedule;
+class StateBasedSchedulable;
 
 class StateModeSelect : public select::Select, public Component {
  public:
@@ -22,117 +23,41 @@ class StateModeSelect : public select::Select, public Component {
     this->schedule_ = schedule;
   }
   
-  void setup() override {
-    this->pref_ = global_preferences->make_preference<uint8_t>(this->get_object_id_hash());
-    uint8_t index;
-    if (!this->pref_.load(&index)) {
-      // No saved preference, default to "Manual Off"
-      this->publish_state(SCHEDULE_MODE_MANUAL_OFF);
-    } else {
-      const auto &options = this->traits.get_options();
-      if (index < options.size()) {
-        this->publish_state(index);
-      } else {
-        this->publish_state(SCHEDULE_MODE_MANUAL_OFF);  // Default to Manual Off
-      }
-    }
-    // Notify via callback with the published state
-    if (this->on_value_callback_ && this->has_state()) {
-      this->on_value_callback_(this->current_option());
-    }
-  }
+  void setup() override;
+  void loop() override;
   
 
-  // Set manual-only mode (schedule is empty)
-  void set_manual_only_mode(bool manual_only) {
-    this->schedule_is_empty_ = manual_only;
-    
-    // Don't dynamically change traits - keep all 5 options available
-    // Just switch to appropriate state based on schedule status
-    
-    size_t current_index = this->index_of(this->current_option()).value_or(SCHEDULE_MODE_MANUAL_OFF);
-    size_t new_index;
-    
-    if (manual_only) {
-      // Schedule is empty - if in schedule-dependent mode, switch to Manual Off
-      // Schedule-dependent modes: Early Off, Auto, Boost On
-      if (current_index == SCHEDULE_MODE_EARLY_OFF || 
-          current_index == SCHEDULE_MODE_AUTO || 
-          current_index == SCHEDULE_MODE_BOOST_ON || 
-          !this->has_state()) {
-        new_index = SCHEDULE_MODE_MANUAL_OFF;
-      } else {
-        // Keep Manual Off or Manual On
-        new_index = current_index;
-      }
-    } else {
-      // Schedule has entries - keep current selection
-      new_index = this->has_state() ? current_index : SCHEDULE_MODE_MANUAL_OFF;
-    }
-    
-    // Publish the state
-    this->publish_state(new_index);
-    
-    if (this->on_value_callback_) {
-      this->on_value_callback_(this->option_at(new_index));
-    }
-  }
+  // Set manual-only mode (schedule is empty) - DEPRECATED, use update_available_modes
+  void set_manual_only_mode(bool manual_only);
+
+  // Update available modes based on schedule validity and pending download
+  void update_available_modes(bool schedule_valid, bool schedule_pending);
   
- 
- protected:
-  void control(size_t index) override {
-    // Check if user is trying to select a schedule-dependent mode when schedule is empty
-    // Schedule-dependent modes: Early Off, Auto, Boost On
-    // Manual modes: Manual Off, Manual On
-    if (this->schedule_is_empty_ && 
-        (index == SCHEDULE_MODE_EARLY_OFF || 
-         index == SCHEDULE_MODE_AUTO || 
-         index == SCHEDULE_MODE_BOOST_ON)) {
+  // Set schedule empty state
+  void set_schedule_empty(bool is_empty) { this->schedule_empty_ = is_empty; }
+  
+  void control(const std::string &value) override;
 
-        // Publish the rejected value first, then the correct value
-        // This forces HA to see a state change
-        this->publish_state(index);
-        // Get the string value only for logging/notification
-        const std::string value = this->option_at(index);
-        ESP_LOGW("schedule.mode_select", "Cannot select '%s': schedule is empty", value.c_str());
-   
+  void set_schedulable(StateBasedSchedulable *schedulable) { this->schedulable_ = schedulable; }
 
-
-        //this->publish_state(SCHEDULE_MODE_MANUAL_OFF);
-        // Send notification to Home Assistant
-        if (this->schedule_ != nullptr) {
-            this->schedule_->send_notification(
-            "Cannot select " + value + " mode",
-            std::string("Schedule '") + this->schedule_->get_name() + "' is empty - only Manual Off and Manual On are available"
-            );
-        }
-      
-        // Trigger callback with Manual Off
-        if (this->on_value_callback_) {
-            this->on_value_callback_(this->option_at(SCHEDULE_MODE_MANUAL_OFF));
-        }
-        this->publish_state(SCHEDULE_MODE_MANUAL_OFF);
-         return;
-    }
-    
-    // Save the selected option index (cast to uint8_t to match preference type)
-    uint8_t index_u8 = static_cast<uint8_t>(index);
-    this->pref_.save(&index_u8);
-    
-    // Publish the selected state
-    this->publish_state(index);
-    
-    // Notify via callback
-    if (this->on_value_callback_) {
-      this->on_value_callback_(this->option_at(index));
-    }
-  }
-
+ private:
   Schedule *schedule_{nullptr};
+  StateBasedSchedulable *schedulable_{nullptr};
   ESPPreferenceObject pref_;
   std::function<void(const std::string&)> on_value_callback_;
+  uint32_t correction_time_{0};  // Time when mode correction was made
+  uint32_t mode_correction_time_{0};  // Time when mode correction was made (new implementation)
+  std::string pending_correction_mode_;  // Mode to correct to
   bool schedule_is_empty_{true};
-};;
+  bool schedule_valid_{false};  // Track if schedule is valid
+  bool schedule_empty_{true};  // Track if schedule is empty
+  bool schedule_pending_{false};  // Track if schedule download is pending
+  bool initial_boot_{true};  // Track if this is initial boot (prevents auto-correction during boot)
+  size_t last_published_option_count_{0};  // Track last published option count
+  
+  void load_mode_from_pref();
+  void save_mode_to_pref();
+};
 
 }  // namespace schedule
 }  // namespace esphome

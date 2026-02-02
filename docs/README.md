@@ -56,9 +56,9 @@ The actual implementation files are in the parent directory:
 - **Persistent Storage**: Schedules saved to NVS flash
 - **Data Sensors**: Schedule variables for temperatures, positions, etc.
 - **Mode Selection**: Manual override, boost, early-off modes
+- **Smart Mode Handling**: All modes always visible, automatic validation with HA notifications
 - **Auto-ID Generation**: Optional components get automatic IDs
 - **Error Notifications**: Sends HA notifications on parsing errors
-- **Dynamic Mode Options**: Modes automatically adjust when schedule is empty
 - **Optimized Logging**: ESPHome best practices for minimal flash/network usage
 - **RTC Support**: Continues operation during WiFi/HA outages
 

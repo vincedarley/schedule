@@ -10,7 +10,8 @@ When paired with a RTC such as DS1307 this allows the device to opperate indepen
 - ✅ **Two Scheduled  Types** - State-based (Switch) and Event-based (Button)
 - ✅ **Schedule Variables** - User defined addtional data such as Temperature, position, defined in Home Assitant schedule entry
 - ✅ **Multiple Modes** - Manual, Auto, Boost, Early-off modes for switches
-- ✅ **Error Notifications** - Automatic HA notifications for schedule errors
+- ✅ **Smart Mode Handling** - All modes always visible, automatic validation and correction
+- ✅ **Error Notifications** - Automatic HA notifications for invalid mode selections
 
 
 ## Requirements
@@ -257,7 +258,15 @@ The switch platform supports 5 operating modes via the mode selector:
 | **Manual On** | Force switch ON, ignore schedule completely |
 | **Boost On** | Turn ON immediately, return to Auto at next ON event |
 
-**Note:** When the schedule is empty (no entries configured in Home Assistant), only **Manual Off** and **Manual On** modes are available. Auto-related modes (Auto, Early Off, Boost On) are automatically hidden until a valid schedule is configured. If the current mode is Auto when the schedule becomes empty, it automatically switches to Manual Off.
+**Mode Availability:**
+- All 5 modes are always visible in Home Assistant (no integration reload required)
+- Schedule-dependent modes (Auto, Early Off, Boost On) require a populated schedule
+- If you select a schedule-dependent mode when the schedule is empty:
+  - A Home Assistant notification is sent explaining the issue
+  - The mode automatically reverts to **Manual Off** after 2 seconds
+- If the schedule becomes empty while in a schedule-dependent mode:
+  - A notification is sent and the mode reverts to **Manual Off**
+- Manual modes (Manual Off, Manual On) work regardless of schedule state
 
 ### Lambda Methods
 
@@ -286,7 +295,7 @@ call.set_option("Auto");
 call.perform();
 
 // Trigger schedule update
-id(heating_schedule_update_button).press();
+id(heating_schedule_update_button).request_schedule();
 ```
 
 
@@ -439,7 +448,15 @@ The button platform supports 2 operating modes:
 | **Disabled** | Don't trigger schedule events |
 | **Enabled** | Trigger events according to schedule (default) |
 
-**Note:** When the schedule is empty (no entries configured in Home Assistant), only the **Disabled** mode is available. The **Enabled** mode is automatically hidden until a valid schedule is configured. If the current mode is Enabled when the schedule becomes empty, it automatically switches to Disabled.
+**Mode Availability:**
+- Both modes are always visible in Home Assistant (no integration reload required)
+- **Enabled** mode requires a populated schedule
+- If you select Enabled when the schedule is empty:
+  - A Home Assistant notification is sent explaining the issue
+  - The mode automatically reverts to **Disabled** after 2 seconds
+- If the schedule becomes empty while in Enabled mode:
+  - A notification is sent and the mode reverts to **Disabled**
+- **Disabled** mode works regardless of schedule state
 
 ### Lambda Methods
 
@@ -463,9 +480,9 @@ call.set_option("Enabled");
 call.perform();
 
 // Trigger schedule update
-id(blinds_schedule_update_button).press();
+id(blinds_schedule_update_button).request_schedule();
 
-// Trigger button press manually
+// Trigger button press event manually. Note DataSensor values will be as last scheduled
 id(blinds_schedule).press();
 ```
 

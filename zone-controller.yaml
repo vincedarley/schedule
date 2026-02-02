@@ -164,7 +164,10 @@ switch:
       - lambda: |-
           float temp = SCHEDULE_GET_DATA(testschedule, "temp");
           ESP_LOGI("schedule", "Switch ON - Temperature: %.1f°C", temp);
-
+    on_turn_off:
+      - lambda: |-
+          float temp = SCHEDULE_GET_DATA(testschedule, "temp");
+          ESP_LOGI("schedule", "Switch OFF - Temperature: %.1f°C", temp);
   - platform: schedule
     id: testschedule2
     name: "Test Schedule Switch2"
@@ -205,17 +208,17 @@ switch:
   - platform: gpio
     pin: GPIO2
     id: relay2
-    on_turn_on:
-      - lambda: 'auto call = id(schedule_2_mode).make_call(); 
-                 call.set_option("Manual Off");
-                 call.perform();'
+    # on_turn_on:
+    #   - lambda: 'auto call = id(schedule_2_mode).make_call(); 
+    #              call.set_option("Manual Off");
+    #              call.perform();'
     name: Relay 2
   - platform: gpio
     pin: GPIO41
     id: relay3
     name: Relay 3
-#    on_turn_on:      
-#      - lambda: 'id(testschedule).load_schedule_from_pref_();'
+    on_turn_on:      
+      - lambda: 'id(fish_feeding_button).press();'
   - platform: gpio
     pin: GPIO42
     id: relay4
@@ -310,6 +313,7 @@ button:
     id: fish_feeding_button
     name: "Feed Fish Button"
     ha_schedule_entity_id: "schedule.fish_feeding"
+#    ha_schedule_entity_id: "schedule.test2"
     max_schedule_size: 10
     
     schedule_update_button:
@@ -333,7 +337,7 @@ button:
     on_press:
       - lambda: |-
           float amount = SCHEDULE_GET_DATA(fish_feeding_button, "Feed Amount");
-          ESP_LOGI("schedule", "Feed button pressed - Amount: %.0f", amount);
+          ESP_LOGI("schedule", "Feed button press - Amount: %.0f", amount);
 
 
   - platform: template

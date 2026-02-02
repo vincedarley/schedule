@@ -546,62 +546,81 @@ The component sends Home Assistant notifications for:
 
 ---
 
-## Dynamic Mode Selection
+## Smart Mode Handling
 
-The mode select components automatically adapt their available options based on the schedule state to prevent user confusion and errors.
+The mode select components use a static-list approach with runtime validation to provide a seamless user experience regardless of schedule state.
 
 ### State-Based Mode Behavior
 
-**When Schedule is Empty:**
-- Available modes: "Manual Off", "Manual On" only
-- Hidden modes: "Auto", "Early Off", "Boost On"
-- Rationale: Schedule-dependent modes require valid schedule data to function
+**All Modes Always Visible:**
+- Available modes: "Manual Off", "Early Off", "Auto", "Manual On", "Boost On"
+- All 5 modes are always advertised to Home Assistant
+- Visibility does NOT change based on schedule state
 
-**When Schedule is Populated:**
-- All 5 modes available: "Manual Off", "Early Off", "Auto", "Manual On", "Boost On"
+**Runtime Validation:**
+- When user selects "Auto", "Early Off", or "Boost On":
+  - Component validates schedule is available
+  - If schedule is empty AND not currently downloading:
+    - Sends persistent HA notification: "Cannot use [mode] - no schedule available. Reverting to Manual Off."
+    - Auto-corrects to "Manual Off" after 2-second delay
+  - If schedule is valid, mode change accepted immediately
 
-**Auto-Switching:**
-- If current mode is "Auto" when schedule becomes empty  switches to "Manual Off"
-- If current mode is "Early Off" or "Boost On" when schedule becomes empty  switches to "Manual Off"
-
+**Auto-Correction Behavior:**
+- If current mode becomes invalid (schedule deleted/corrupted):
+  - Automatically switches to "Manual Off"
+  - No notification sent (mode already set by user previously)
+  
 **Implementation:**
-- `StateModeSelect::set_manual_only_mode(bool is_empty)`
-- Called from `StateBasedSchedulable::on_schedule_empty_changed()`
-- Uses `SelectTraits::set_options()` to update available options
-- Calls `publish_state()` to notify Home Assistant
+- `StateModeSelect::control()` validates mode selection
+- `StateModeSelect::set_schedule_empty(bool is_empty)` tracks schedule state
+- Uses `schedule_pending_` flag to avoid false rejections during download
+- `loop()` applies 2-second delayed correction
+- `Schedule::send_notification()` sends persistent HA notification
 
 ### Event-Based Mode Behavior
 
-**When Schedule is Empty:**
-- Available modes: "Disabled" only
-- Hidden modes: "Enabled"
-- Rationale: Cannot trigger events without schedule data
+**All Modes Always Visible:**
+- Available modes: "Disabled", "Enabled"
+- Both modes always advertised to Home Assistant
+- Visibility does NOT change based on schedule state
 
-**When Schedule is Populated:**
-- Both modes available: "Disabled", "Enabled"
+**Runtime Validation:**
+- When user selects "Enabled":
+  - Component validates schedule is available
+  - If schedule is empty AND not currently downloading:
+    - Sends persistent HA notification: "Cannot enable - no schedule available. Reverting to Disabled."
+    - Auto-corrects to "Disabled" after 2-second delay
+  - If schedule is valid, mode change accepted immediately
 
-**Auto-Switching:**
-- If current mode is "Enabled" when schedule becomes empty  switches to "Disabled"
+**Auto-Correction Behavior:**
+- If "Enabled" mode becomes invalid (schedule deleted/corrupted):
+  - Automatically switches to "Disabled"
+  - No notification sent (mode already set by user previously)
 
 **Implementation:**
-- `EventModeSelect::set_disabled_only_mode(bool is_empty)`
-- Called from `EventBasedSchedulable::on_schedule_empty_changed()`
-- Uses `SelectTraits::set_options()` to update available options
-- Calls `publish_state()` to notify Home Assistant
+- `EventModeSelect::control()` validates mode selection
+- `EventModeSelect::set_schedule_empty(bool is_empty)` tracks schedule state
+- Uses `schedule_pending_` flag to avoid false rejections during download
+- `loop()` applies 2-second delayed correction
+- `Schedule::send_notification()` sends persistent HA notification
 
-### Home Assistant UI Behavior
+### Why Static Options?
 
-**Known Limitation:**
-- Home Assistant caches select entity options
-- UI may not immediately reflect option changes until:
-  - Browser page refresh
+**Home Assistant API Limitation:**
+- HA requests entity traits during connection handshake
+- Entity options are sent BEFORE schedule downloads
+- HA caches options permanently until next connection
+- Dynamic option changes are not reflected in UI without:
   - ESPHome device reconnection
-  - Home Assistant restart
+  - Home Assistant core restart
+  - Browser cache clear
 
-**Why This Happens:**
-- HA queries entity traits on entity discovery/reconnection
-- Dynamic trait changes between connections may not trigger immediate UI update
-- `publish_state()` notifies HA of state change, but not necessarily trait changes
+**Solution Benefits:**
+- Users see all modes immediately in HA UI
+- No confusion about "missing" modes after factory reset
+- Clear feedback via HA notifications when invalid selection made
+- Automatic correction prevents device in invalid state
+- No integration reload required
 
 
 ## Design Decisions

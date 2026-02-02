@@ -5,6 +5,7 @@ namespace esphome {
 namespace schedule {
 
 static const char *const TAG = "schedule.state_based";
+// Force rebuild after header change
 
 //==============================================================================
 // MAIN LOOP
@@ -12,6 +13,76 @@ static const char *const TAG = "schedule.state_based";
 
 void StateBasedSchedulable::loop() {
   uint32_t now = millis();
+  
+  // On first loop, sync the restored mode from mode select without triggering state changes
+  bool mode_synced = false;
+  if (this->first_loop_ && this->mode_select_ != nullptr && this->mode_select_->has_state()) {
+    auto restored_mode_ref = this->mode_select_->current_option();
+    std::string restored_mode = std::string(restored_mode_ref.c_str());
+    if (!restored_mode.empty()) {
+      // Update mode enum without calling on_mode_changed
+      if (restored_mode == "Manual Off") {
+        this->current_mode_ = SCHEDULE_MODE_MANUAL_OFF;
+      } else if (restored_mode == "Early Off") {
+        this->current_mode_ = SCHEDULE_MODE_EARLY_OFF;
+      } else if (restored_mode == "Auto") {
+        this->current_mode_ = SCHEDULE_MODE_AUTO;
+      } else if (restored_mode == "Manual On") {
+        this->current_mode_ = SCHEDULE_MODE_MANUAL_ON;
+      } else if (restored_mode == "Boost On") {
+        this->current_mode_ = SCHEDULE_MODE_BOOST_ON;
+      }
+      mode_synced = true;
+    }
+  }
+  
+  // Auto-request check and main loop throttle - runs once per second
+  if (now - this->last_time_check_ >= 1000) {
+    this->last_time_check_ = now;
+    
+    // Check prerequisites to handle pending auto-request execution
+    // This MUST run even in manual modes to download schedules on boot
+    this->check_prerequisites_();
+    
+    // Update HA connection status first if not connected
+    if (!this->ha_connected_) {
+      this->check_ha_connection_();
+    }
+  }
+  
+  // Manual modes operate independently of schedule state
+  // Check BEFORE the 1-second throttle so it runs immediately on first loop
+  if (this->current_mode_ == SCHEDULE_MODE_MANUAL_OFF || 
+      this->current_mode_ == SCHEDULE_MODE_MANUAL_ON) {
+    // Just ensure state matches mode
+    int expected_state = (this->current_mode_ == SCHEDULE_MODE_MANUAL_ON) ? STATE_MAN_ON : STATE_MAN_OFF;
+    // Force handle_state_change() on first boot, when processed_state_ is still -1, or when state needs to change
+    if (this->current_state_ != expected_state || this->processed_state_ == -1 || this->first_loop_) {
+      this->current_state_ = expected_state;
+      // On first loop, force processed_state_ to differ so handle_state_change() doesn't skip the update
+      if (this->first_loop_) {
+        this->processed_state_ = -1;
+      }
+      this->handle_state_change_();
+      this->first_loop_ = false;  // Clear flag AFTER updating
+    }
+    return;  // Skip all other checks for manual modes
+  }
+  
+  // For non-manual modes, clear first_loop_ flag (but only if we've synced the mode or don't have a mode select)
+  if (this->first_loop_ && (mode_synced || this->mode_select_ == nullptr)) {
+    this->first_loop_ = false;
+  }
+  
+  // Handle initialization state IMMEDIATELY (not throttled)
+  // This ensures that when mode changes to Auto, initialization happens right away
+  if (this->current_state_ == STATE_INIT) {
+    this->initialize_schedule_operation_();
+    this->initialized_since_boot_ = true;  // Mark as initialized
+    // Force state change to be processed in next iteration
+    this->handle_state_change_();
+    return;  // Exit to allow next iteration to handle normal operation
+  }
   
   // Periodic logging every 60 seconds
   if (now - this->last_state_log_time_ >= 60000) {
@@ -21,15 +92,15 @@ void StateBasedSchedulable::loop() {
     ESP_LOGV(TAG, "Current mode: %d", this->current_mode_);
   }
 
-  // Normal operation - run every second
-  if (now - this->last_time_check_ >= 1000) {
-    this->last_time_check_ = now;
-    
+  // Continue normal operation - check prerequisites and handle state
+  // Only process if throttle check passed (last_time_check was updated this iteration)
+  if (now == this->last_time_check_) {
     // Check all prerequisites (returns error code)
     auto prereq_error = this->check_prerequisites_();
     
     // Handle prerequisite errors with state transitions
     if (prereq_error != PREREQ_OK) {
+      ESP_LOGD(TAG, "[LOOP] Prerequisites failed, error=%d", prereq_error);
       // Map prerequisite errors to states
       if (prereq_error == PREREQ_TIME_INVALID) {
         if (this->current_state_ != STATE_TIME_INVALID) {
@@ -52,6 +123,14 @@ void StateBasedSchedulable::loop() {
       return;
     }
     
+    // Force initialization on first boot when in AUTO state
+    if ((this->current_state_ == STATE_AUTO_ON || this->current_state_ == STATE_AUTO_OFF) && 
+        !this->initialized_since_boot_) {
+      this->current_state_ = STATE_INIT;
+      // Initialization will be handled in next loop iteration (outside throttle)
+      return;
+    }
+    
     // Prerequisites OK - transition from error states to INIT if needed
     if ((this->current_state_ == STATE_TIME_INVALID || 
          this->current_state_ == STATE_SCHEDULE_INVALID || 
@@ -59,13 +138,8 @@ void StateBasedSchedulable::loop() {
         prereq_error == PREREQ_OK) {
       this->current_state_ = STATE_INIT;
       ESP_LOGV(TAG, "Prerequisites met, transitioning to INIT state");
-    }
-    
-    // Handle initialization state
-    if (this->current_state_ == STATE_INIT) {
-      this->initialize_schedule_operation_();
-      ESP_LOGI(TAG, "Normal operation, mode = %d State = %d", this->current_mode_, this->current_state_);
-      return;  // Exit to allow next iteration to handle normal operation
+      // Initialization will be handled in next loop iteration (outside throttle)
+      return;
     }
     
     // Skip if still in error states
@@ -75,13 +149,8 @@ void StateBasedSchedulable::loop() {
       return;
     }
     
-    // Update current state based on mode and event state
-    this->current_state_ = this->mode_to_state_(this->current_mode_, this->event_switch_state_);
-    
-    // Handle state changes - this will only process if state differs from processed_state_
-    this->handle_state_change_();
-    
     // Check and advance schedule events if time has reached next event
+    // This will update event_switch_state_ and current_state_ as needed
     this->check_and_advance_events_();
   }
 }
@@ -119,15 +188,32 @@ void StateBasedSchedulable::on_mode_changed(const std::string &mode) {
   }
   
   ESP_LOGD(TAG, "Current mode enum set to: %d", this->current_mode_);
+  
+  // Don't set state during boot - let initialization handle it
+  if (!this->initialized_since_boot_ && this->current_mode_ == SCHEDULE_MODE_AUTO) {
+    ESP_LOGI(TAG, "Mode changed to Auto - triggering initialization (schedule valid=%d, empty=%d)", 
+             this->schedule_valid_, this->schedule_empty_);
+    this->current_state_ = STATE_INIT;
+    return;
+  }
+  
+  // Immediately update the state based on the new mode and trigger state change
+  this->current_state_ = this->mode_to_state_(this->current_mode_, this->event_switch_state_);
+  this->handle_state_change_();
 }
 
-void StateBasedSchedulable::on_schedule_empty_changed(bool is_empty) {
+void StateBasedSchedulable::on_schedule_empty_changed(bool is_empty, bool schedule_pending) {
   if (this->mode_select_ != nullptr) {
-    this->mode_select_->set_manual_only_mode(is_empty);
-    if (is_empty) {
-      ESP_LOGI(TAG, "Schedule empty - restricting to manual modes only");
+    // Update schedule empty state first so update_available_modes has correct info
+    this->mode_select_->set_schedule_empty(is_empty);
+    this->mode_select_->update_available_modes(!is_empty, schedule_pending);
+    // Log status but don't restrict modes - mode select always advertises all options
+    if (is_empty && schedule_pending) {
+      ESP_LOGI(TAG, "Schedule empty but download pending");
+    } else if (is_empty) {
+      ESP_LOGI(TAG, "Schedule empty - schedule-dependent modes will behave as manual modes");
     } else {
-      ESP_LOGI(TAG, "Schedule populated - all modes available");
+      ESP_LOGI(TAG, "Schedule populated");
     }
   }
 }
@@ -216,14 +302,36 @@ void StateBasedSchedulable::advance_to_next_event_() {
 }
 
 void StateBasedSchedulable::check_and_advance_events_() {
+  // Don't process before initialization completes
+  if (this->current_event_index_ < 0) {
+    return;
+  }
+  
   // Get current time in minutes
   auto now_time = this->time_->now();
   uint16_t current_time_minutes = this->time_to_minutes_(now_time);
   
+  // Only process once per minute to prevent cycling
+  if (current_time_minutes == this->last_processed_minute_) {
+    return;  // Already processed this minute
+  }
+  this->last_processed_minute_ = current_time_minutes;
+  
   // Check if we should advance to next event
-  if (!this->should_advance_to_next_event_(current_time_minutes)) {
+  bool should_advance = this->should_advance_to_next_event_(current_time_minutes);
+  
+  // Log near event time
+  uint16_t next_event_time = this->next_event_raw_ & TIME_MASK;
+  if (current_time_minutes >= next_event_time - 2 && current_time_minutes <= next_event_time + 5) {
+    ESP_LOGD(TAG, "[%s] At/near event: cur=%u, next=%u, should_advance=%s", 
+             this->get_name().c_str(), current_time_minutes, next_event_time, should_advance ? "YES" : "NO");
+  }
+  
+  if (!should_advance) {
     return;
   }
+  
+  ESP_LOGI(TAG, "[%s] ADVANCING EVENT at time %u", this->get_name().c_str(), current_time_minutes);
   
   // Advance to next event (updates event_switch_state_)
   this->advance_to_next_event_();
@@ -234,11 +342,13 @@ void StateBasedSchedulable::check_and_advance_events_() {
     this->current_mode_ = SCHEDULE_MODE_AUTO;
     this->current_state_ = this->get_state_after_mode_reset_(this->event_switch_state_);
     this->set_mode_option(this->current_mode_);
+    this->handle_state_change_();
     ESP_LOGD(TAG, "Temporary mode expired, reset to AUTO mode, state=%d", this->current_state_);
   }
   // Update state for auto mode based on new event
   else if (this->current_mode_ == SCHEDULE_MODE_AUTO) {
     this->current_state_ = this->event_switch_state_ ? STATE_AUTO_ON : STATE_AUTO_OFF;
+    this->handle_state_change_();
   }
 }
 
@@ -258,8 +368,6 @@ void StateBasedSchedulable::initialize_schedule_operation_() {
   
   // Reset processed_state_ to force state change detection on next loop iteration
   this->processed_state_ = STATE_TIME_INVALID;
-  
-  ESP_LOGD(TAG, "State-based initialization complete, state: %d", this->current_state_);
 }
 
 // Initialize last_on_value_ for each data sensor by finding the most recent ON event
@@ -430,24 +538,34 @@ void StateBasedSchedulable::handle_state_change_() {
       
     case STATE_AUTO_ON:
       // Auto mode - schedule indicates ON
+      this->set_data_sensors_(this->current_event_index_, true, false);
       this->apply_scheduled_state(true);
       this->update_switch_indicator(true);
-      this->display_current_next_events_(
-        this->create_event_string_(this->current_event_raw_), 
-        this->create_event_string_(this->next_event_raw_)
-      );
-      this->set_data_sensors_(this->current_event_index_, true, false);
+      // Check if schedule is empty (waiting for download)
+      if (this->schedule_empty_) {
+        this->display_current_next_events_("Waiting for schedule", "Download pending");
+      } else {
+        this->display_current_next_events_(
+          this->create_event_string_(this->current_event_raw_), 
+          this->create_event_string_(this->next_event_raw_)
+        );
+      }
       break;
       
     case STATE_AUTO_OFF:
       // Auto mode - schedule indicates OFF
+      this->set_data_sensors_(this->current_event_index_, false, false);
       this->apply_scheduled_state(false);
       this->update_switch_indicator(false);
-      this->display_current_next_events_(
-        this->create_event_string_(this->current_event_raw_), 
-        this->create_event_string_(this->next_event_raw_)
-      );
-      this->set_data_sensors_(this->current_event_index_, false, false);
+      // Check if schedule is empty (waiting for download)
+      if (this->schedule_empty_) {
+        this->display_current_next_events_("Waiting for schedule", "Download pending");
+      } else {
+        this->display_current_next_events_(
+          this->create_event_string_(this->current_event_raw_), 
+          this->create_event_string_(this->next_event_raw_)
+        );
+      }
       break;
       
     default:
