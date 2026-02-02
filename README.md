@@ -1,81 +1,139 @@
 # ESPHome Schedule Component
 
 A comprehensive scheduling component for ESPHome that integrates seamlessly with Home Assistant schedules. Control switches, buttons, and other devices based on time-based schedules with support for schedule variables (temperature, position, etc.) and multiple operating modes.
-When paired with a RTC such as DS1307 this allows the device to opperate independantly from Home Assistant.
 
-## Features
+When paired with a RTC such as DS1307, this allows the device to operate independently from Home Assistant.
+
+## Overview
+
+The Schedule component provides two platform types for different scheduling needs:
+
+### Platform Types
+
+- **[Switch Platform](components/schedule/switch/README.md)** - State-based scheduling for devices that need ON/OFF control over time periods (heating, lights, pumps)
+- **[Button Platform](components/schedule/button/README.md)** - Event-based scheduling for momentary actions at specific times (blinds, feeders, notifications)
+
+### Common Features
+
+Both platforms share these core capabilities:
 
 - ✅ **Home Assistant Integration** - Automatic sync with HA schedule helpers
 - ✅ **Persistent Storage** - Schedules saved to NVS flash, survive reboots
-- ✅ **Two Scheduled  Types** - State-based (Switch) and Event-based (Button)
-- ✅ **Schedule Variables** - User defined addtional data such as Temperature, position, defined in Home Assitant schedule entry
-- ✅ **Multiple Modes** - Manual, Auto, Boost, Early-off modes for switches
+- ✅ **Schedule Variables** - User-defined additional data (temperature, position) defined in Home Assistant schedule entries
+- ✅ **Multiple Modes** - Manual and automatic operation modes
 - ✅ **Smart Mode Handling** - All modes always visible, automatic validation and correction
 - ✅ **Error Notifications** - Automatic HA notifications for invalid mode selections
+- ✅ **Offline Operation** - Works with RTC when WiFi/HA unavailable
 
+## Common Elements
+
+### Time Source Configuration
+
+Both platforms require a time source. An RTC is recommended for offline operation:
+
+```yaml
+time:
+  - platform: ds1307  # Or DS3231
+    id: rtc_time
+    update_interval: never
+  - platform: homeassistant
+    on_time_sync:
+      then:
+        ds1307.write_time:
+```
+
+### Home Assistant API
+
+API connection required for schedule synchronization:
+
+```yaml
+api:
+  encryption: 
+    key: !secret api_key
+  homeassistant_services: true
+```
+
+### Schedule Update Button
+
+Both platforms include an update button to manually refresh the schedule from Home Assistant:
+
+```yaml
+schedule_update_button:
+  name: "Update Schedule"
+```
+
+### Mode Selector
+
+Both platforms include a mode selector for manual override:
+
+- **Switch**: 5 modes (Manual Off, Early Off, Auto, Manual On, Boost On)
+- **Button**: 2 modes (Disabled, Enabled)
+
+```yaml
+mode_selector:
+  name: "Schedule Mode"
+```
+
+### Schedule Variables (Data Sensors)
+
+Both platforms support additional data attached to schedule entries, defined in Home Assistant and exposed as sensors in ESPHome:
+
+```yaml
+scheduled_data_items:
+  - id: temp_sensor
+    label: "temp"
+    item_type: float
+    name: "Target Temperature"
+```
+
+In Home Assistant, attach data to schedule entries:
+```json
+{
+  "temp": 21.5
+}
+```
+
+### Text Sensors
+
+Both platforms provide informational text sensors:
+
+```yaml
+current_event:
+  name: "Current Event"  # Shows current schedule state/event
+next_event:
+  name: "Next Event"     # Shows next upcoming event
+```
 
 ## Requirements
 
 ### Hardware Requirements
 
-- **ESP32 or derivatives** - This has been tested on a ESP32-S3. Storage of schedules and associated data sensors require the use of NVS, the ESP 8266 only has 96 bytes of RTC so its not suitable for this component.
-
-- **Real-Time Clock (RTC) Module** - Required for offline operation and network outages
-  - Supported modules: DS3231, DS1307, or compatible I2C RTC
-  - The RTC maintains accurate timekeeping when WiFi or Home Assistant is unavailable
-  - Schedule operations will continue based on RTC time during outages
-  - Example configuration:
+- **ESP32 or derivatives** - Tested on ESP32-S3. Storage requires NVS (ESP8266 not supported)
+- **Real-Time Clock (RTC) Module** - Required for offline operation
+  - Supported: DS3231, DS1307, or compatible I2C RTC
+  - Maintains timekeeping during WiFi/HA outages
 
 ### Software Requirements
 
 - **ESPHome** 2025.11.1 or later
-- **Home Assistant** with schedule helper integration 2025.11.3 or later
+- **Home Assistant** 2025.11.3 or later with schedule helper integration
 - **API connection** to Home Assistant (for schedule sync)
 
 ### Test Hardware
 
-- **Development Board**  [Waveshare 6Ch Relay](https://devices.esphome.io/devices/waveshare-6ch-relay/)
-- **RTC**  [RTC Module Pico HAT](https://www.waveshare.com/pico-rtc-ds3231.htm)
----
-## Technical Description
+- **Development Board**: [Waveshare 6Ch Relay](https://devices.esphome.io/devices/waveshare-6ch-relay/)
+- **RTC**: [RTC Module Pico HAT](https://www.waveshare.com/pico-rtc-ds3231.htm)
 
-For detailed technical information about the how to create other schedule components, component architecture, state machines, and internal workings, see:
-- **[Technical Architecture](docs/README.md)** - Component design and implementation details
+## Platform Documentation
 
----
+Choose your platform based on your use case:
 
-## Quick Start
+- **[Switch Platform](components/schedule/switch/README.md)** - For state-based scheduling (ON/OFF over time periods)
+- **[Button Platform](components/schedule/button/README.md)** - For event-based scheduling (momentary actions at specific times)
 
-### 1. Install the Component
+## Quick Start Examples
 
-Copy the `custom_components/schedule` folder to your ESPHome configuration directory
-
-### 2. Configure a Time Source
-
-```yaml
-time:
-  - platform: ds1307 # Or DS3231 It works as per the ds1307
-    id: rtc_time
-    update_interval: never
-  - platform: homeassistant
-
-    on_time_sync:
-      then:
-        # Update the RTC when the synchronization is successful
-        ds1307.write_time:
-```
-### 3. Set up the Home Assitant API
-
-```yaml
-# Enable Home Assistant API
-api:
-   # password: !secret api_password
-  encryption: 
-    key: !secret api_key
-  homeassistant_services: True
-  ```
-
-### 4. Create a Scheduled Switch 
+### Switch Platform Example
 
 ```yaml
 switch:
@@ -89,32 +147,31 @@ switch:
     
     mode_selector:
       name: "Heating Mode"
+      
     on_turn_on:
       - logger.log: "Switch Turned ON by schedule"
     on_turn_off:
       - logger.log: "Switch Turned OFF by schedule" 
 ```
 
-### 5. Create a Home Assistant Schedule
+### Button Platform Example
 
-In Home Assistant, create a schedule helper with the same entity ID:
-
-**Configuration → Helpers → Add Helper → Schedule**
-
-[Click here to open on your Home Assitant instance](https://my.home-assistant.io/redirect/config_flow_start?domain=schedule)
-- Name: `Heating`
-- Entity ID: `schedule.heating`
-
-Add time slots:
-- Monday-Friday: 06:00-08:00 and 17:00-22:00
-- Saturday-Sunday: 08:00-23:00
-
-## Platform Documentation
-
-- **[Switch Platform](#switch-platform)** - State-based scheduling for switches, climate, lights
-- **[Button Platform](#button-platform)** - Event-based scheduling for buttons, covers, locks
-- **[Home Assistant Schedules](#home-assistant-schedules)** - How to configure HA schedules with additional data
-- **[Advanced Topics](#advanced-topics)** - Storage Efficiency, Performance Characteristics, Error Notifications
+```yaml
+button:
+  - platform: schedule
+    id: feeder_schedule
+    name: "Feed Cat"
+    ha_schedule_entity_id: "schedule.cat_feeding"
+    
+    schedule_update_button:
+      name: "Update Feeding Schedule"
+    
+    mode_selector:
+      name: "Feeding Schedule Mode"
+      
+    on_press:
+      - logger.log: "Feeding time!"
+```
 
 ## Examples
 
@@ -126,7 +183,14 @@ Complete, ready-to-use YAML configuration examples are available in the `example
 
 For code snippets and detailed explanations, see **[Configuration Examples](docs/EXAMPLES.md)**
 
-## Storage 
+## Technical Documentation
+
+For detailed technical information about component architecture, state machines, and internal workings:
+
+- **[Technical Architecture](docs/README.md)** - Component design and implementation details
+- **[Adding New Components](docs/ADDING_NEW_SCHEDULED_COMPONENTS.md)** - Developer guide
+
+## Storage Efficiency
 
 ### NVS (Non-Volatile Storage) Usage
 
@@ -134,70 +198,34 @@ The schedule component uses ESP32's NVS flash memory to persistently store sched
 
 **⚠️ Important NVS Considerations:**
 
-- **Over-provisioning Warning:** Setting `max_schedule_size` too high (e.g., 50+ entries when you only use 10) permanently reserves NVS space that cannot be reclaimed during normal operation
-- **NVS is Limited:** ESP32 NVS partition is typically 12-20KB. Multiple schedule components with large `max_schedule_size` can exhaust available NVS
-- **Factory Reset Recovery:** Once your device is fully developed and deployed, you can perform a factory reset to free up over-provisioned NVS space by reducing `max_schedule_size` to actual usage levels
-- **Right-sizing:** Set `max_schedule_size` to your actual needs + small buffer (e.g., if you use 15 entries, set to 21, not 100)
+- **Over-provisioning Warning:** Setting `max_schedule_size` too high permanently reserves NVS space
+- **NVS is Limited:** ESP32 NVS partition is typically 12-20KB
+- **Right-sizing:** Set `max_schedule_size` to actual needs + small buffer (e.g., if you use 15 entries, set to 21, not 100)
+- **Factory Reset Recovery:** Reduce `max_schedule_size` and factory reset to reclaim over-provisioned space
 
-### State-Based (Switch)
+### Platform Storage Comparison
+
+**State-Based (Switch):**
 - Stores ON/OFF time pairs
-- Supports 5 modes (Manual Off/On, Auto, Early Off, Boost On)
 - **Storage:** (entries × 4) + 4 bytes
 - **Example:** 21 entries = 88 bytes
 
-### Event-Based (Button)
+**Event-Based (Button):**
 - Stores event times only
-- Supports 2 modes (Disabled, Enabled)
 - **Storage:** (entries × 2) + 4 bytes (**50% savings!**)
 - **Example:** 21 entries = 46 bytes
 
+## Home Assistant Schedule Configuration
+
+Create schedule helpers in Home Assistant:
+
+**Configuration → Helpers → Add Helper → Schedule**
+
+[Open Home Assistant](https://my.home-assistant.io/redirect/config_flow_start?domain=schedule)
+
+Add time slots for each day of the week. For schedule variables, see platform-specific documentation.
+
 ---
-
-## Switch Platform
-
-The **Switch Platform** provides **state-based scheduling** where each schedule entry defines an ON time and OFF time. Perfect for controlling heating, lighting, or any device that needs to maintain a state over time.
-
-### Basic Configuration
-
-```yaml
-switch:
-  - platform: schedule
-    id: heating_schedule
-    name: "Heating Schedule"
-    ha_schedule_entity_id: "schedule.heating"
-    
-    schedule_update_button:
-      name: "Update Heating Schedule"
-    
-    mode_selector:
-      name: "Heating Mode"
-
-    on_turn_on:
-      - logger.log: "Heater Switch Turned ON"
-      ....
-    on_turn_off:
-      - logger.log: "Heater Switch Turned OFF" 
-      .... 
-```
-
-### Configuration Variables
-
-#### Required Variables
-
-- **`id`** (**Required**, ID): Component identifier for use in lambdas
-- **`name`** (**Required**, string): Display name for the switch
-- **`ha_schedule_entity_id`** (**Required**, string): Entity ID of Home Assistant schedule (e.g., `schedule.heating`)
-- **`schedule_update_button`** (**Required**, button config): Button to trigger schedule update from Home Assistant
-  - **`name`** (string): Button display name
-- **`mode_selector`** (**Required**, select config): Mode selection dropdown
-  - **`name`** (string): Selector display name
-
-#### Optional Variables
-
-- **`max_schedule_size`** (*Optional*, int): Maximum number of schedule entries. Default: `21`
-- **`schedule_switch_indicator`** (*Optional*, binary_sensor config): Visual indicator that mirrors schedule state
-  - **`name`** (string): Indicator display name
-  - Auto-generates ID: `{switch_id}_indicator`
 - **`current_event`** (*Optional*, text_sensor config): Shows current schedule entry index
   - **`name`** (string): Sensor display name
   - Auto-generates ID: `{switch_id}_current_event_sensor`
@@ -371,131 +399,7 @@ See **[Switch Platform Examples](docs/EXAMPLES.md#switch-platform-examples)**
 
 ---
 
-## Button Platform
 
-The **Button Platform** provides **event-based scheduling** where each schedule entry defines a single event time. Perfect for triggering actions like opening blinds, unlocking doors, or sending notifications.
-
-### Basic Configuration
-
-```yaml
-button:
-  - platform: schedule
-    id: blinds_schedule
-    name: "Blinds Schedule"
-    ha_schedule_entity_id: "schedule.blinds"
-    
-    schedule_update_button:
-      name: "Update Blinds Schedule"
-    
-    mode_selector:
-      name: "Blinds Mode"
-```
-
-### Configuration Variables
-
-#### Required Variables
-
-- **`id`** (**Required**, ID): Component identifier for use in lambdas
-- **`name`** (**Required**, string): Display name for the button
-- **`ha_schedule_entity_id`** (**Required**, string): Entity ID of Home Assistant schedule (e.g., `schedule.blinds`)
-- **`schedule_update_button`** (**Required**, button config): Button to trigger schedule update from Home Assistant
-  - **`name`** (string): Button display name
-- **`mode_selector`** (**Required**, select config): Mode selection dropdown
-  - **`name`** (string): Selector display name
-
-#### Optional Variables
-
-- **`max_schedule_size`** (*Optional*, int): Maximum number of schedule entries. Default: `21`
-- **`current_event`** (*Optional*, text_sensor config): Shows current schedule entry index
-  - **`name`** (string): Sensor display name
-  - Auto-generates ID: `{button_id}_current_event_sensor`
-- **`next_event`** (*Optional*, text_sensor config): Shows next schedule entry index
-  - **`name`** (string): Sensor display name
-  - Auto-generates ID: `{button_id}_next_event_sensor`
-- **`scheduled_data_items`** (*Optional*, list): Custom data fields for schedule entries
-  - See [Schedule Data Items](#button-schedule-data-items) below
-- All other options from [Button Component](https://esphome.io/components/button/) are also available (e.g., `icon`, `entity_category`, `disabled_by_default`, etc.).
-
-### Button Schedule Data Items
-
-Add custom data to each schedule event (position, brightness, etc.):
-
-```yaml
-scheduled_data_items:
-  - id: blinds_position
-    label: "position"
-    item_type: float
-```
-
-#### Data Item Configuration
-
-- **`id`** (*Optional*, ID): Component identifier. Auto-generated if not specified. **Must be explicitly provided if you need to access the sensor value in lambdas or C++ code** (e.g., using `SCHEDULE_GET_DATA` macro).
-- **`label`** (**Required**, string): Field name in Home Assistant schedule data
-- **`item_type`** (**Required**, enum): Data type
-  - `uint8_t` - 0 to 255
-  - `uint16_t` - 0 to 65,535
-  - `int32_t` - -2,147,483,648 to 2,147,483,647
-  - `float` - Floating point number
-
-**Note:** Event-based schedules do NOT support `off_behavior` or `manual_behavior` since events are instantaneous.
-
-### Operating Modes
-
-The button platform supports 2 operating modes:
-
-| Mode | Behavior |
-|------|----------|
-| **Disabled** | Don't trigger schedule events |
-| **Enabled** | Trigger events according to schedule (default) |
-
-**Mode Availability:**
-- Both modes are always visible in Home Assistant (no integration reload required)
-- **Enabled** mode requires a populated schedule
-- If you select Enabled when the schedule is empty:
-  - A Home Assistant notification is sent explaining the issue
-  - The mode automatically reverts to **Disabled** after 2 seconds
-- If the schedule becomes empty while in Enabled mode:
-  - A notification is sent and the mode reverts to **Disabled**
-- **Disabled** mode works regardless of schedule state
-
-### Lambda Methods
-
-Access schedule components in lambda expressions:
-
-```cpp
-// Check current mode
-auto mode = id(blinds_schedule_mode_select).state;
-
-// Get data sensor value using SCHEDULE_GET_DATA macro
-float position = SCHEDULE_GET_DATA(blinds_schedule, "position");
-
-// Check if valid value
-if (!isnan(position)) {
-  // Use position value
-}
-
-// Change mode programmatically
-auto call = id(blinds_schedule_mode_select).make_call();
-call.set_option("Enabled");
-call.perform();
-
-// Trigger schedule update
-id(blinds_schedule_update_button).request_schedule();
-
-// Trigger button press event manually. Note DataSensor values will be as last scheduled
-id(blinds_schedule).press();
-```
-
-### Configuration Examples
-
-For detailed configuration examples including:
-- Automated cat feeder
-- Position-controlled blinds
-- Multi-action schedules
-
-See **[Button Platform Examples](docs/EXAMPLES.md#button-platform-examples)**
-
----
 
 ## Home Assistant Schedules
 
