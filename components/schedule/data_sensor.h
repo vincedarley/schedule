@@ -8,6 +8,7 @@
 #include <string>
 #include <cstring>
 #include <algorithm>
+#include <functional>
 
 namespace esphome {
 namespace schedule {
@@ -73,6 +74,12 @@ class DataSensor : public sensor::Sensor {
   // Get value from data vector at index without publishing
   float get_sensor_value(size_t index);
   
+  // Set value preprocessor for converting JSON values before storage
+  // Used by select platform to convert "Home"→"0", "Eco"→"1" etc
+  void set_value_preprocessor(std::function<std::string(const std::string&)> preprocessor) {
+    this->value_preprocessor_ = preprocessor;
+  }
+  
   // Update the sensor value 
   void publish_value(float value); 
   
@@ -114,6 +121,9 @@ class DataSensor : public sensor::Sensor {
   std::vector<uint8_t> data_vector_;  // Local working storage
   ArrayPreferenceBase *array_pref_{nullptr};  // Persistent storage
   Schedule *parent_schedule_{nullptr};
+  
+  // Optional value preprocessor for string→index conversion (used by select platform)
+  std::function<std::string(const std::string&)> value_preprocessor_{nullptr};
 };
 
 }  // namespace schedule

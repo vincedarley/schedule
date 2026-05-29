@@ -167,9 +167,6 @@ async def setup_schedule_core(var, config, storage_type='state'):
     array_pref = cg.RawExpression(f'new esphome::schedule::ArrayPreference<{size}>()')
     cg.add(var.sched_add_pref(array_pref))
     
-    # Set internal to true by default
-    cg.add(var.set_internal(True))
-    
     # Set time component
     time_var = await cg.get_variable(config[CONF_TIME_ID])
     cg.add(var.set_time(time_var))
@@ -177,7 +174,7 @@ async def setup_schedule_core(var, config, storage_type='state'):
     # Set update on reconnect flag (use newer naming convention)
     update_on_reconnect = config.get("update_schedule_from_ha_on_reconnect", False)
     if update_on_reconnect:
-        cg.add(var.set_update_on_reconnect(True))
+        cg.add(var.set_update_schedule_on_reconnect(True))
     
     return var
 
@@ -267,6 +264,7 @@ async def setup_data_sensors(var, config, is_state_based=True):
 
 async def to_code(config):
     # Add required build flags for Home Assistant service call with JSON responses
+    cg.add_build_flag("-DUSE_API_HOMEASSISTANT_SERVICES")
     cg.add_build_flag("-DUSE_API_HOMEASSISTANT_ACTION_RESPONSES")
     cg.add_build_flag("-DUSE_API_HOMEASSISTANT_ACTION_RESPONSES_JSON")
     pass

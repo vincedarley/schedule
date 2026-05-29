@@ -1043,20 +1043,24 @@ void Schedule::process_schedule_(const ArduinoJson::JsonObjectConst &response) {
                 std::string value_str;
                 
                 switch (item_type) {
-                    case 0:  // uint8_t
+                    case 0:  // uint8_t (also accepts strings for select platform)
                     case 1:  // uint16_t
                     case 2: {  // int32_t
-                        if (!data_value.is<int>() && !data_value.is<long>()) {
-                            ESP_LOGE(TAG, "Data field '%s' in %s not integer type; aborting", 
+                        // Accept both integers and strings (strings will be preprocessed)
+                        if (data_value.is<const char*>() || data_value.is<std::string>()) {
+                            value_str = data_value.as<std::string>();
+                        } else if (data_value.is<int>() || data_value.is<long>()) {
+                            value_str = std::to_string(data_value.as<long>());
+                        } else {
+                            ESP_LOGE(TAG, "Data field '%s' in %s not integer or string type; aborting", 
                                      label.c_str(), days[i]);
-                            ESP_LOGE(TAG, "Expected integer for sensor '%s' with item_type %u", label.c_str(), item_type);
+                            ESP_LOGE(TAG, "Expected integer or string for sensor '%s' with item_type %u", label.c_str(), item_type);
                             std::string msg = "Schedule parsing failed: Data field '" + label + "' in " + 
-                                              std::string(days[i]) + " is not an integer type (expected for item_type " + 
+                                              std::string(days[i]) + " is not an integer or string type (expected for item_type " + 
                                               std::to_string(item_type) + ").";
                             this->send_ha_notification_(msg, "Schedule Error");
                             return;
                         }
-                        value_str = std::to_string(data_value.as<long>());
                         break;
                     }
                     case 3: {  // float

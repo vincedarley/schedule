@@ -214,6 +214,14 @@ void DataSensor::add_schedule_data_to_sensor(const std::string &value_str, size_
     return;
   }
 
+  // Apply value preprocessor if set (e.g., select platform converting "Home"→"0")
+  std::string processed_value = value_str;
+  if (this->value_preprocessor_) {
+    processed_value = this->value_preprocessor_(value_str);
+    ESP_LOGD(TAG_DATA_SENSOR, "Preprocessed '%s' → '%s' for sensor '%s'",
+             value_str.c_str(), processed_value.c_str(), this->get_label().c_str());
+  }
+
   // Calculate bytes per item and actual vector index
   uint16_t bytes_per_item = get_bytes_for_type(this->item_type_);
   size_t actual_index = index * bytes_per_item;
@@ -229,8 +237,8 @@ void DataSensor::add_schedule_data_to_sensor(const std::string &value_str, size_
   switch (this->item_type_) {
     case 0: {  // uint8_t
       char *endptr;
-      unsigned long temp = strtoul(value_str.c_str(), &endptr, 10);
-      if (*endptr != '\0' || endptr == value_str.c_str()) {
+      unsigned long temp = strtoul(processed_value.c_str(), &endptr, 10);
+      if (*endptr != '\0' || endptr == processed_value.c_str()) {
         ESP_LOGE(TAG_DATA_SENSOR, "Invalid argument: cannot convert '%s' to numeric value for sensor '%s'", 
                  value_str.c_str(), this->get_label().c_str());
         return;
@@ -245,8 +253,8 @@ void DataSensor::add_schedule_data_to_sensor(const std::string &value_str, size_
     }
     case 1: {  // uint16_t
       char *endptr;
-      unsigned long temp = strtoul(value_str.c_str(), &endptr, 10);
-      if (*endptr != '\0' || endptr == value_str.c_str()) {
+      unsigned long temp = strtoul(processed_value.c_str(), &endptr, 10);
+      if (*endptr != '\0' || endptr == processed_value.c_str()) {
         ESP_LOGE(TAG_DATA_SENSOR, "Invalid argument: cannot convert '%s' to numeric value for sensor '%s'", 
                  value_str.c_str(), this->get_label().c_str());
         return;
@@ -263,8 +271,8 @@ void DataSensor::add_schedule_data_to_sensor(const std::string &value_str, size_
     }
     case 2: {  // int32_t
       char *endptr;
-      long temp = strtol(value_str.c_str(), &endptr, 10);
-      if (*endptr != '\0' || endptr == value_str.c_str()) {
+      long temp = strtol(processed_value.c_str(), &endptr, 10);
+      if (*endptr != '\0' || endptr == processed_value.c_str()) {
         ESP_LOGE(TAG_DATA_SENSOR, "Invalid argument: cannot convert '%s' to numeric value for sensor '%s'", 
                  value_str.c_str(), this->get_label().c_str());
         return;
@@ -282,8 +290,8 @@ void DataSensor::add_schedule_data_to_sensor(const std::string &value_str, size_
     }
     case 3: {  // float
       char *endptr;
-      float value = strtof(value_str.c_str(), &endptr);
-      if (*endptr != '\0' || endptr == value_str.c_str()) {
+      float value = strtof(processed_value.c_str(), &endptr);
+      if (*endptr != '\0' || endptr == processed_value.c_str()) {
         ESP_LOGE(TAG_DATA_SENSOR, "Invalid argument: cannot convert '%s' to numeric value for sensor '%s'", 
                  value_str.c_str(), this->get_label().c_str());
         return;

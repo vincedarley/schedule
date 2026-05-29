@@ -1,21 +1,22 @@
 # ESPHome Schedule Component
 
-A comprehensive scheduling component for ESPHome that integrates seamlessly with Home Assistant schedules. Control switches, buttons, and other devices based on time-based schedules with support for schedule variables (temperature, position, etc.) and multiple operating modes.
+A comprehensive scheduling component for ESPHome that integrates seamlessly with Home Assistant schedules. Control switches, buttons, selects, and other devices based on time-based schedules with support for schedule variables (temperature, position, etc.) and multiple operating modes.
 
 When paired with a RTC such as DS1307, this allows the device to operate independently from Home Assistant.
 
 ## Overview
 
-The Schedule component provides two platform types for different scheduling needs:
+The Schedule component provides three platform types for different scheduling needs:
 
 ### Platform Types
 
 - **[Switch Platform](components/schedule/switch/README.md)** - State-based scheduling for devices that need ON/OFF control over time periods (heating, lights, pumps)
 - **[Button Platform](components/schedule/button/README.md)** - Event-based scheduling for momentary actions at specific times (blinds, feeders, notifications)
+- **[Select Platform](components/schedule/select/README.md)** - Event-based scheduling for multi-state control with predefined options (heating presets, fan speeds, scenes)
 
 ### Common Features
 
-Both platforms share these core capabilities:
+All platforms share these core capabilities:
 
 - ✅ **Home Assistant Integration** - Automatic sync with HA schedule helpers
 - ✅ **Persistent Storage** - Schedules saved to NVS flash, survive reboots
@@ -29,7 +30,7 @@ Both platforms share these core capabilities:
 
 ### Time Source Configuration
 
-Both platforms require a time source. An RTC is recommended for offline operation:
+All platforms require a time source. An RTC is recommended for offline operation:
 
 ```yaml
 time:
@@ -55,7 +56,7 @@ api:
 
 ### Schedule Update Button
 
-Both platforms include an update button to manually refresh the schedule from Home Assistant:
+All platforms include an update button to manually refresh the schedule from Home Assistant:
 
 ```yaml
 schedule_update_button:
@@ -64,10 +65,11 @@ schedule_update_button:
 
 ### Mode Selector
 
-Both platforms include a mode selector for manual override:
+All platforms include a mode selector for manual override:
 
 - **Switch**: 5 modes (Manual Off, Early Off, Auto, Manual On, Boost On)
 - **Button**: 2 modes (Disabled, Enabled)
+- **Select**: 2 modes (Disabled, Enabled)
 
 ```yaml
 mode_selector:
@@ -76,7 +78,7 @@ mode_selector:
 
 ### Schedule Variables (Data Sensors)
 
-Both platforms support additional data attached to schedule entries, defined in Home Assistant and exposed as sensors in ESPHome:
+All platforms support additional data attached to schedule entries, defined in Home Assistant and exposed as sensors in ESPHome:
 
 ```yaml
 scheduled_data_items:
@@ -95,7 +97,7 @@ In Home Assistant, attach data to schedule entries:
 
 ### Text Sensors
 
-Both platforms provide informational text sensors:
+All platforms provide informational text sensors:
 
 ```yaml
 current_event:
@@ -130,6 +132,7 @@ Choose your platform based on your use case:
 
 - **[Switch Platform](components/schedule/switch/README.md)** - For state-based scheduling (ON/OFF over time periods)
 - **[Button Platform](components/schedule/button/README.md)** - For event-based scheduling (momentary actions at specific times)
+- **[Select Platform](components/schedule/select/README.md)** - For event-based scheduling (multi-state mode changes)
 
 ## Quick Start Examples
 
@@ -173,12 +176,40 @@ button:
       - logger.log: "Feeding time!"
 ```
 
+### Select Platform Example
+
+```yaml
+select:
+  - platform: schedule
+    id: heating_preset
+    name: "Heating Preset"
+    ha_schedule_entity_id: "schedule.heating_preset"
+    
+    options:
+      - "Home"
+      - "Eco"
+      - "Vacation"
+    
+    scheduled_data_items:
+      - id: preset_index
+        label: "preset"
+        item_type: uint8_t
+        name: "Preset Index"
+    
+    schedule_update_button:
+      name: "Update Preset Schedule"
+    
+    mode_selector:
+      name: "Preset Mode"
+```
+
 ## Examples
 
 Complete, ready-to-use YAML configuration examples are available in the `examples/` folder:
 
 - **[Switch Examples](examples/)** - Basic heating, thermostat control, multi-zone heating
 - **[Button Examples](examples/)** - Cat feeder, blinds control, daily routines
+- **[Select Examples](examples/)** - Heating presets, fan speeds, lighting scenes
 - **[Examples README](examples/README.md)** - Setup instructions and customization guide
 
 For code snippets and detailed explanations, see **[Configuration Examples](docs/EXAMPLES.md)**
@@ -212,8 +243,14 @@ The schedule component uses ESP32's NVS flash memory to persistently store sched
 
 **Event-Based (Button):**
 - Stores event times only
-- **Storage:** (entries × 2) + 4 bytes (**50% savings!**)
+- **Storage:** (entries × 2) + 4 bytes (**50% savings vs Switch!**)
 - **Example:** 21 entries = 46 bytes
+
+**Event-Based (Select):**
+- Stores event times + option index (1 byte)
+- **Storage:** (entries × 1) + 4 bytes for data sensor (**75% savings vs Button!**)
+- **Example:** 21 entries = 25 bytes (+ event time storage from Button)
+- **Note:** Select uses index-based storage for maximum efficiency
 
 ## Home Assistant Schedule Configuration
 
