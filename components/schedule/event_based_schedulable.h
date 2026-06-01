@@ -83,6 +83,11 @@ class EventBasedSchedulable : public Schedule {
   void loop() override;
   
  protected:
+  /** Update UI elements after initialization or event changes
+   * Virtual to allow platform-specific behavior (e.g., Select publishing initial state)
+   * Base implementation updates display strings and data sensors
+   */
+  virtual void update_event_based_ui_();
   //============================================================================
   // VIRTUAL METHOD OVERRIDES FROM BASE CLASS
   //============================================================================
@@ -128,9 +133,6 @@ class EventBasedSchedulable : public Schedule {
   
   /** Handle prerequisite checks and state transitions */
   bool handle_prerequisites_();
-  
-  /** Update event-based UI (sensors and displays) */
-  void update_event_based_ui_();
   
   /** Force reinitialization after schedule update */
   void force_reinitialize() {

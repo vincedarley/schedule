@@ -248,6 +248,13 @@ class Schedule : public Component  {
     this->data_sensors_.push_back(sensor);
   }
   
+  //============================================================================
+  // ACCESSORS
+  //============================================================================
+  const std::string& get_ha_schedule_entity_id() const {
+    return ha_schedule_entity_id_;
+  }
+  
   // Get data sensor by label
   DataSensor* get_data_sensor(const std::string &label) {
     for (auto *sensor : this->data_sensors_) {

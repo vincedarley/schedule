@@ -51,8 +51,15 @@ class ScheduleSelect : public select::Select, public EventBasedSchedulable {
   // For Select: read string option from data sensor and publish state
   void apply_scheduled_state(bool on) override;
   
+  // Override to publish initial state to Home Assistant
+  void update_event_based_ui_() override;
+  
   // Handle manual selection changes
   void control(const std::string &value) override;
+  
+ private:
+  // Helper to get current option string from data sensor
+  optional<std::string> get_current_option_from_sensor_();
 };
 
 } // namespace schedule

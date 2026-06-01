@@ -79,11 +79,12 @@ void EventModeSelect::load_mode_from_pref() {
       select::Select::publish_state(options[index]);
       return;
     } else {
-      ESP_LOGW(TAG, "Loaded index %d out of range (max %d), defaulting to Disabled", index, options.size());
+      ESP_LOGW(TAG, "Loaded index %d out of range (max %d), defaulting to Enabled", index, options.size());
     }
   }
   
-  select::Select::publish_state(MODE_DISABLED);
+  // Default to Enabled on first boot (no saved preference)
+  select::Select::publish_state(MODE_ENABLED);
 }
 
 void EventModeSelect::save_mode_to_pref() {

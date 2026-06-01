@@ -56,9 +56,21 @@ class MySuccessWithJsonTrigger : public Trigger<JsonObjectConst> {
 
 class MyErrorTrigger : public Trigger<std::string> {
  public:
+  explicit MyErrorTrigger(Schedule *parent) : parent_(parent) {}
+  
   void trigger(const std::string &err)  {
-    ESP_LOGW(TAG, "Home Assistant Get_Schedule service call failed: %s", err.c_str());
+    if (parent_ && !parent_->get_ha_schedule_entity_id().empty()) {
+      ESP_LOGW(TAG, "Home Assistant Get_Schedule service call failed for '%s': %s", 
+               parent_->get_ha_schedule_entity_id().c_str(), err.c_str());
+      ESP_LOGW(TAG, "  → Solution: Create schedule entity '%s' in Home Assistant", 
+               parent_->get_ha_schedule_entity_id().c_str());
+    } else {
+      ESP_LOGW(TAG, "Home Assistant Get_Schedule service call failed: %s", err.c_str());
+    }
   }
+  
+ protected:
+  Schedule *parent_;
 };
 
 //==============================================================================
@@ -862,7 +874,7 @@ void Schedule::setup_schedule_retrieval_service_() {
 
     // Create listener objects
     auto *success_listener = new MySuccessWithJsonTrigger(this);
-    auto *error_listener = new MyErrorTrigger();
+    auto *error_listener = new MyErrorTrigger(this);
 
     // Wire success JSON trigger -> Automation -> Action -> MySuccessWithJsonTrigger::trigger(...)
     auto *json_trigger = this->ha_get_schedule_action_->get_success_trigger_with_response();
