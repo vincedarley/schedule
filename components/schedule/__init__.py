@@ -264,7 +264,6 @@ async def setup_data_sensors(var, config, is_state_based=True):
 
 async def to_code(config):
     # Add required build flags for Home Assistant service call with JSON responses
-    cg.add_build_flag("-DUSE_API_HOMEASSISTANT_SERVICES")
     cg.add_build_flag("-DUSE_API_HOMEASSISTANT_ACTION_RESPONSES")
     cg.add_build_flag("-DUSE_API_HOMEASSISTANT_ACTION_RESPONSES_JSON")
     pass

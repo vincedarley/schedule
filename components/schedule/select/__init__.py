@@ -28,7 +28,7 @@ from .. import (
 
 CODEOWNERS = ["@pebblebed-tech"]
 DEPENDENCIES = []
-AUTO_LOAD = ["select", "schedule"]
+AUTO_LOAD = ["select", "schedule", "button", "text_sensor"]
 
 # Select-specific configuration keys
 CONF_UPDATE_BUTTON = "schedule_update_button"

@@ -50,8 +50,39 @@ optional<std::string> ScheduleSelect::get_current_option_from_sensor_() {
 }
 
 void ScheduleSelect::update_event_based_ui_() {
-  // Call base implementation to update text sensors and data sensors
-  EventBasedSchedulable::update_event_based_ui_();
+  // Build event text with preset option names instead of generic "EVENT"
+  std::string current_text = "at " + this->format_event_time_(this->current_event_raw_ & TIME_MASK);
+  std::string next_text = "at " + this->format_event_time_(this->next_event_raw_ & TIME_MASK);
+  
+  // Enhance event text with preset option if available
+  if (!this->data_sensors_.empty()) {
+    auto *sensor = this->data_sensors_[0];
+    const auto& options = this->traits.get_options();
+    
+    // Add current event preset to text
+    if (this->current_event_index_ >= 0) {
+      float current_index_float = sensor->get_sensor_value(static_cast<size_t>(this->current_event_index_));
+      uint8_t current_option_index = static_cast<uint8_t>(current_index_float);
+      if (current_option_index < options.size()) {
+        current_text = std::string(options[current_option_index]) + " at " + this->format_event_time_(this->current_event_raw_ & TIME_MASK);
+      }
+    }
+    
+    // Add next event preset to text
+    if (this->next_event_index_ >= 0) {
+      float next_index_float = sensor->get_sensor_value(static_cast<size_t>(this->next_event_index_));
+      uint8_t next_option_index = static_cast<uint8_t>(next_index_float);
+      if (next_option_index < options.size()) {
+        next_text = std::string(options[next_option_index]) + " at " + this->format_event_time_(this->next_event_raw_ & TIME_MASK);
+      }
+    }
+  }
+  
+  // Update current/next event text sensors
+  this->display_current_next_events_(current_text, next_text);
+  
+  // Update data sensors with current event index
+  this->set_data_sensors_(this->current_event_index_, true, false);
   
   // Publish current state to Home Assistant
   // This ensures the select entity shows the correct value in HA, not "unknown"
