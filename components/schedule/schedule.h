@@ -423,14 +423,14 @@ class Schedule : public Component  {
 
  protected:
   // Home Assistant service actions
-  esphome::api::HomeAssistantServiceCallAction<> *ha_get_schedule_action_{nullptr};
-  esphome::api::HomeAssistantServiceCallAction<> *ha_notify_action_{nullptr};
+  esphome::api::HomeAssistantServiceCallAction<Schedule *> *ha_get_schedule_action_{nullptr};
+  esphome::api::HomeAssistantServiceCallAction<std::string, std::string> *ha_notify_action_{nullptr};
 
   // Containers to own the automations/actions so they remain alive
-  std::vector<std::unique_ptr<esphome::Automation<JsonObjectConst>>> ha_json_automations_;
-  std::vector<std::unique_ptr<esphome::Action<JsonObjectConst>>> ha_json_actions_;
-  std::vector<std::unique_ptr<esphome::Automation<std::string>>> ha_str_automations_;
-  std::vector<std::unique_ptr<esphome::Action<std::string>>> ha_str_actions_;
+  std::vector<std::unique_ptr<esphome::Automation<JsonObjectConst, Schedule *>>> ha_json_automations_;
+  std::vector<std::unique_ptr<esphome::Action<JsonObjectConst, Schedule *>>> ha_json_actions_;
+  std::vector<std::unique_ptr<esphome::Automation<std::string, Schedule *>>> ha_str_automations_;
+  std::vector<std::unique_ptr<esphome::Action<std::string, Schedule *>>> ha_str_actions_;
 };
 
 

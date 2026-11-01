@@ -833,13 +833,14 @@ void Schedule::setup_schedule_retrieval_service_() {
         // Get the global API server instance (required for communication)
         api::APIServer *api_server = api::global_api_server;
 
-        this->ha_get_schedule_action_ = new api::HomeAssistantServiceCallAction<>(api_server, false);
-        
-        this->ha_get_schedule_action_->set_service("schedule.get_schedule");
-        this->ha_get_schedule_action_->init_data(1);
-        this->ha_get_schedule_action_->add_data("entity_id", this->ha_schedule_entity_id_);
-        this->ha_get_schedule_action_->init_data_template(0);
-        this->ha_get_schedule_action_->init_variables(0);
+        // Field table: service name first, then data. The entity_id is read from the Schedule passed to play().
+        using GetScheduleAction = api::HomeAssistantServiceCallAction<Schedule *>;
+        static const GetScheduleAction::Field fields[] = {
+            {nullptr, "schedule.get_schedule", nullptr},
+            GetScheduleAction::Field::from_lambda(
+                "entity_id", [](Schedule *s) -> std::string { return s->get_ha_schedule_entity_id(); }),
+        };
+        this->ha_get_schedule_action_ = new GetScheduleAction(api_server, false, fields, 1, 0, 0);
         this->ha_get_schedule_action_->set_wants_status();
         this->ha_get_schedule_action_->set_wants_response();
 
@@ -847,11 +848,11 @@ void Schedule::setup_schedule_retrieval_service_() {
     #ifdef USE_API_HOMEASSISTANT_ACTION_RESPONSES_JSON
 
 // Small Action that forwards JsonObjectConst payloads to the listener object.
-    class JsonListenerAction : public esphome::Action<JsonObjectConst> {
+    class JsonListenerAction : public esphome::Action<JsonObjectConst, Schedule *> {
     public:
         explicit JsonListenerAction(MySuccessWithJsonTrigger *listener) : listener_(listener) {}
     protected:
-        void play(const JsonObjectConst &response) override {
+        void play(const JsonObjectConst &response, Schedule *const &) override {
             if (this->listener_)
                 this->listener_->trigger(response);
             }
@@ -860,11 +861,11 @@ void Schedule::setup_schedule_retrieval_service_() {
     };
 
 // Small Action that forwards std::string payloads to the error listener object.
-    class StringListenerAction : public esphome::Action<std::string> {
+    class StringListenerAction : public esphome::Action<std::string, Schedule *> {
     public:
         explicit StringListenerAction(MyErrorTrigger *listener) : listener_(listener) {}
     protected:
-        void play(const std::string &s) override {
+        void play(const std::string &s, Schedule *const &) override {
             if (this->listener_)
                 this->listener_->trigger(s);
             }
@@ -879,7 +880,7 @@ void Schedule::setup_schedule_retrieval_service_() {
     // Wire success JSON trigger -> Automation -> Action -> MySuccessWithJsonTrigger::trigger(...)
     auto *json_trigger = this->ha_get_schedule_action_->get_success_trigger_with_response();
     if (json_trigger != nullptr) {
-        auto json_automation = std::make_unique<esphome::Automation<JsonObjectConst>>(json_trigger);
+        auto json_automation = std::make_unique<esphome::Automation<JsonObjectConst, Schedule *>>(json_trigger);
         auto json_action = std::make_unique<JsonListenerAction>(success_listener);
         json_automation->add_action(json_action.get());
         this->ha_json_automations_.emplace_back(std::move(json_automation));
@@ -889,7 +890,7 @@ void Schedule::setup_schedule_retrieval_service_() {
     // Wire error trigger (string) -> Automation -> Action -> MyErrorTrigger::trigger(...)
     auto *err_trigger = this->ha_get_schedule_action_->get_error_trigger();
     if (err_trigger != nullptr) {
-        auto str_automation = std::make_unique<esphome::Automation<std::string>>(err_trigger);
+        auto str_automation = std::make_unique<esphome::Automation<std::string, Schedule *>>(err_trigger);
         auto str_action = std::make_unique<StringListenerAction>(error_listener);
         str_automation->add_action(str_action.get());
         this->ha_str_automations_.emplace_back(std::move(str_automation));
@@ -915,12 +916,16 @@ void Schedule::setup_notification_service_() {
         api::APIServer *api_server = api::global_api_server;
         
         // Create a HomeAssistant service call action for notify.persistent_notification
-        this->ha_notify_action_ = new api::HomeAssistantServiceCallAction<>(api_server, false);
-        
-        this->ha_notify_action_->set_service("notify.persistent_notification");
-        this->ha_notify_action_->init_data(2);
-        this->ha_notify_action_->init_data_template(0);
-        this->ha_notify_action_->init_variables(0);
+        // message and title are supplied as play() arguments
+        using NotifyAction = api::HomeAssistantServiceCallAction<std::string, std::string>;
+        static const NotifyAction::Field fields[] = {
+            {nullptr, "notify.persistent_notification", nullptr},
+            NotifyAction::Field::from_lambda(
+                "message", [](const std::string &message, const std::string &) -> std::string { return message; }),
+            NotifyAction::Field::from_lambda(
+                "title", [](const std::string &, const std::string &title) -> std::string { return title; }),
+        };
+        this->ha_notify_action_ = new NotifyAction(api_server, false, fields, 2, 0, 0);
         
         ESP_LOGD(TAG, "Notification service setup complete");
         
@@ -938,13 +943,7 @@ void Schedule::send_ha_notification_(const std::string &message, const std::stri
         
         ESP_LOGI(TAG, "Sending notification to Home Assistant: %s", message.c_str());
         
-        // Re-initialize data for this call
-        this->ha_notify_action_->init_data(2);
-        this->ha_notify_action_->add_data("message", message);
-        this->ha_notify_action_->add_data("title", title);
-        
-        // Execute the notification
-        this->ha_notify_action_->play();
+        this->ha_notify_action_->play(message, title);
         
     #else
         ESP_LOGW(TAG, "API not enabled - cannot send notification");
@@ -959,7 +958,7 @@ void Schedule::request_schedule() {
         }
         ESP_LOGI(TAG, "Requesting schedule from Home Assistant for entity: %s", this->ha_schedule_entity_id_.c_str());
         // Play action with no template args
-        this->ha_get_schedule_action_->play();
+        this->ha_get_schedule_action_->play(this);
     #else
         ESP_LOGW(TAG, "API not enabled - cannot request schedule");
     #endif
